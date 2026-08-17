@@ -1,161 +1,88 @@
-# App Research Agent -- Phase 1 setup
+# App Research Agent – Composio Take-home
 
-This is the scaffold for the Composio take-home: an agent that researches
-100 apps and reports auth patterns, self-serve status, API surface, and
-buildability. This README covers Phase 1 only -- getting your environment
-ready. Later phases (the agent itself, verification, the HTML report)
-build on top of this.
+An automated research agent that analyzes 100 SaaS apps to extract authentication methods, self-serve status, API surface, and buildability for AI agent toolkits. Built for the Composio AI Product Ops Intern assignment.
 
-## What's already here
+---
 
-```
-project/
-  data/apps.json      the 100 apps from the assignment, structured and ready
-  schema.py            the exact "form" every researched app must match
-  requirements.txt      python packages this project needs
-  .env.example          template for your API keys (copy to .env)
-  test_setup.py          run this to confirm Composio is wired up correctly
-  output/                 where research results will be saved (Phase 2+)
-```
+## 📊 Live Case Study
 
-## Step 1: Python environment
+**[View the interactive dashboard →](https://<your-username>.github.io/<repo-name>/)**
 
-You need Python 3.10 or newer. Check with:
+The dashboard presents:
+- 5 headline findings
+- 78.8% → 100% accuracy improvement through human verification
+- Searchable, sortable table of all 100 apps
+
+---
+
+## 🏗️ Architecture
+
+The agent works in **two tiers**:
+
+1. **Tier 1 – Composio Catalog Check**  
+   Checks if Composio already ships a toolkit for the app. If found, we get ground-truth auth schemes (OAuth2, API Key, etc.) – no LLM call needed.
+
+2. **Tier 2 – Gemini Research**  
+   For apps not in the catalog, Gemini researches:
+   - Auth methods (OAuth2, API Key, Basic, Token)
+   - Self-serve vs gated (can a developer get credentials freely?)
+   - API surface (REST, GraphQL, both, or none)
+   - Buildability (can we build an agent toolkit today?)
+   - Evidence URLs (documentation links)
+
+**Verification Loop** (Phase 4):  
+20 apps hand-checked against real documentation. Accuracy improved from **78.8% → 100%**.
+
+---
+
+## 📈 Key Findings
+
+| Metric | Value |
+|--------|-------|
+| **Self-serve apps** | 81/100 (81%) |
+| **Buildable today** | 84/100 (84%) |
+| **Composio toolkits already exist** | 60/100 (60%) |
+| **MCP servers exist** | 14/100 (14%) |
+| **Dominant auth** | OAuth2 (61%) |
+
+### Category Breakdown
+
+| Category | Self-Serve | Buildable |
+|----------|------------|-----------|
+| Communications & Messaging | 100% | 100% |
+| Marketing, Ads, Email & Social | 100% | 100% |
+| Developer, Infra & Data | 100% | 100% |
+| Productivity & Project Mgmt | 100% | 100% |
+| CRM & Sales | 90% | 90% |
+| Support & Helpdesk | 90% | 90% |
+| Data, SEO & Scraping | 80% | 90% |
+| Ecommerce | 60% | 80% |
+| Finance & Fintech | 50% | 50% |
+| AI, Research & Media-native | 40% | 40% |
+
+---
+
+## 🔧 How to Run the Agent
+
+### Prerequisites
+- Python 3.10+
+- Composio account ([composio.dev](https://composio.dev))
+- Gemini API key ([Google AI Studio](https://makersuite.google.com/app/apikey))
+
+### Setup
 
 ```bash
-python3 --version
-```
+# 1. Clone the repo
+git clone <your-repo-url>
+cd <repo-name>
 
-Create an isolated environment so this project's packages don't clash
-with anything else on your machine, then install dependencies:
-
-```bash
-cd project
+# 2. Create virtual environment
 python3 -m venv .venv
-source .venv/bin/activate      # on Windows: .venv\Scripts\activate
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+
+# 3. Install dependencies
 pip install -r requirements.txt
-```
 
-You'll know it worked if `pip list` shows `composio`, `pydantic`,
-`anthropic`, and `python-dotenv`.
-
-## Step 2: Git repo
-
-This will become the repo you submit, so set it up now:
-
-```bash
-git init
-git add .
-git commit -m "Phase 1: schema, repo scaffold, data/apps.json"
-```
-
-Then create an empty repo on GitHub and push:
-
-```bash
-git remote add origin <your-repo-url>
-git branch -M main
-git push -u origin main
-```
-
-## Step 3: Composio account
-
-1. Go to composio.dev and sign up (GitHub or email works).
-2. Once logged in, open the dashboard and find **Settings > API Keys**.
-3. Create a new API key and copy it -- you won't be able to see it again,
-   so paste it somewhere safe immediately.
-4. In this project folder, copy the env template and fill it in:
-
-   ```bash
-   cp .env.example .env
-   ```
-
-   Open `.env` and paste your key after `COMPOSIO_API_KEY=`.
-
-5. You'll also need an Anthropic API key (console.anthropic.com) for the
-   agent's reasoning step in Phase 2 -- paste that in `ANTHROPIC_API_KEY=`
-   too, even though we're not using it yet.
-
-**Never commit `.env`.** It's already excluded via `.gitignore`, but
-double check before you push.
-
-## Step 4: Verify the connection
-
-```bash
-python test_setup.py
-```
-
-Expected output looks like:
-
-```
-Connected to Composio.
-Session ID: ...
-Session has N meta tool(s) available:
- - COMPOSIO_SEARCH_...
- - ...
-Setup looks good. You're ready for Phase 2 (the research agent).
-```
-
-If this fails, the error message will tell you which piece is missing --
-usually a blank or mistyped API key. Fix `.env` and rerun.
-
-## Step 5: Sanity-check the schema
-
-```bash
-python schema.py
-```
-
-This should print a validated example entry for Stripe as JSON. If you
-edit `schema.py` and break something (e.g. set `api_surface="restt"`),
-rerunning this will show you a validation error -- that's the schema
-doing its job.
-
-## Phase 2: the research agent
-
-New files:
-
-```
-explore_composio.py    run this FIRST -- prints Composio's raw toolkit
-                         data so you can confirm field names match what
-                         composio_lookup.py expects
-composio_lookup.py       tier 1: checks if Composio already has a
-                         toolkit for the app (ground-truth auth data)
-web_researcher.py         tier 2: Claude + web search fills in everything
-                         else, for apps not in Composio's catalog
-agent.py                   orchestrator -- loops over all 100 apps,
-                         merges both tiers, validates, saves results
-```
-
-### Run order
-
-```bash
-# 1. Confirm Composio's API shape matches what the code expects
-python explore_composio.py
-
-# 2. Smoke-test the web researcher on one app
-python web_researcher.py
-
-# 3. Test the full pipeline on 5 apps before spending real API calls on 100
-python agent.py --limit 5
-
-# 4. Check output/pass_1.json and output/pass_1_failures.json, then
-#    run the full batch once you're happy with the results
-python agent.py
-```
-
-### What to expect
-
-- Each app costs one Claude API call with web search (billed per search +
-  tokens) plus one fast, free-ish Composio lookup. Budget accordingly --
-  run `--limit 5` and `--limit 20` before committing to all 100.
-- Failures are expected and saved separately, not silently dropped --
-  check `output/pass_1_failures.json` after each run.
-- This is deliberately the *fast, minimally-verified* first pass. Phase 4
-  (verification) is where accuracy gets measured and improved -- don't
-  try to make this pass perfect, that's not the point of a first pass.
-
-## What's next (Phase 3)
-
-Once `output/pass_1.json` has all 100 apps (or as many as succeeded),
-Phase 3 is the verification loop: sample ~15-20 apps, hand-check them
-against the real docs, measure this pass's accuracy, then run a
-stricter second pass and measure the improvement.
+# 4. Set up environment variables
+cp .env.example .env
+# Edit .env and add your COMPOSIO_API_KEY and GEMINI_API_KEY
