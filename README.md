@@ -109,9 +109,53 @@ edit `schema.py` and break something (e.g. set `api_surface="restt"`),
 rerunning this will show you a validation error -- that's the schema
 doing its job.
 
-## What's next (Phase 2)
+## Phase 2: the research agent
 
-With the environment working and the schema locked, Phase 2 builds the
-actual research loop: for each of the 100 apps in `data/apps.json`,
-search for its docs, fetch the relevant pages, and have the LLM extract
-a result matching `schema.py`, saved to `output/`.
+New files:
+
+```
+explore_composio.py    run this FIRST -- prints Composio's raw toolkit
+                         data so you can confirm field names match what
+                         composio_lookup.py expects
+composio_lookup.py       tier 1: checks if Composio already has a
+                         toolkit for the app (ground-truth auth data)
+web_researcher.py         tier 2: Claude + web search fills in everything
+                         else, for apps not in Composio's catalog
+agent.py                   orchestrator -- loops over all 100 apps,
+                         merges both tiers, validates, saves results
+```
+
+### Run order
+
+```bash
+# 1. Confirm Composio's API shape matches what the code expects
+python explore_composio.py
+
+# 2. Smoke-test the web researcher on one app
+python web_researcher.py
+
+# 3. Test the full pipeline on 5 apps before spending real API calls on 100
+python agent.py --limit 5
+
+# 4. Check output/pass_1.json and output/pass_1_failures.json, then
+#    run the full batch once you're happy with the results
+python agent.py
+```
+
+### What to expect
+
+- Each app costs one Claude API call with web search (billed per search +
+  tokens) plus one fast, free-ish Composio lookup. Budget accordingly --
+  run `--limit 5` and `--limit 20` before committing to all 100.
+- Failures are expected and saved separately, not silently dropped --
+  check `output/pass_1_failures.json` after each run.
+- This is deliberately the *fast, minimally-verified* first pass. Phase 4
+  (verification) is where accuracy gets measured and improved -- don't
+  try to make this pass perfect, that's not the point of a first pass.
+
+## What's next (Phase 3)
+
+Once `output/pass_1.json` has all 100 apps (or as many as succeeded),
+Phase 3 is the verification loop: sample ~15-20 apps, hand-check them
+against the real docs, measure this pass's accuracy, then run a
+stricter second pass and measure the improvement.

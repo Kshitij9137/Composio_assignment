@@ -57,6 +57,13 @@ class AppResearch(BaseModel):
         default=None, description="Main blocker if verdict is not 'yes'"
     )
 
+    # Ground-truth signal from Composio's own catalog, distinct from
+    # mcp_exists (which is about third-party MCP servers found via research).
+    # If Composio already ships this toolkit, that's strong evidence for
+    # buildability and for the real auth scheme used in production.
+    composio_toolkit_exists: bool = Field(default=False)
+    composio_auth_schemes: List[str] = Field(default_factory=list)
+
     evidence_urls: List[str] = Field(
         default_factory=list, description="The actual docs pages used as evidence"
     )
@@ -85,6 +92,8 @@ if __name__ == "__main__":
         buildability_verdict="yes",
         evidence_urls=["https://stripe.com/docs/api"],
         confidence="high",
+        composio_toolkit_exists=True,
+        composio_auth_schemes=["api_key"],
     )
     print("Schema OK. Example entry:")
     print(example.model_dump_json(indent=2))

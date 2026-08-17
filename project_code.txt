@@ -1,0 +1,1067 @@
+
+======================================================================
+FILE: agent.py
+======================================================================
+"""
+agent.py – orchestrator using Composio catalog + web research via Gemini.
+"""
+
+import argparse
+import json
+import os
+import sys
+import time
+from dotenv import load_dotenv
+from pydantic import ValidationError
+
+from composio_lookup import lookup_toolkit
+from schema import AppResearch
+from web_researcher import research_app
+
+try:
+    from composio import Composio
+except ImportError:
+    Composio = None
+
+
+def load_apps(limit: int | None = None) -> list[dict]:
+    with open("data/apps.json") as f:
+        apps = json.load(f)
+    return apps[:limit] if limit else apps
+
+
+def process_one_app(composio_client, composio_session, app: dict) -> dict:
+    """
+    Returns a dict with keys: 'result' (validated AppResearch dict, or
+    None on failure) and 'status' ('ok' | 'validation_failed' | 'error'),
+    plus 'note' with details for the failure log.
+    """
+    name = app["name"]
+
+    # Tier 1: Composio catalog check
+    composio_hit = None
+    if composio_client is not None:
+        try:
+            composio_hit = lookup_toolkit(composio_client, name)
+        except Exception as e:
+            print(f"  [warn] Composio lookup errored for {name}: {e}")
+
+    # Tier 2: web research using Composio session + Gemini
+    try:
+        parsed, raw_text = research_app(
+            composio_session, name, app["website_hint"], app["category"]
+        )
+    except Exception as e:
+        return {"result": None, "status": "error", "note": f"research_app raised: {e}"}
+
+    if parsed is None:
+        return {
+            "result": None,
+            "status": "error",
+            "note": f"Could not parse model output. Raw: {raw_text[:300]}",
+        }
+
+    # Merge: Composio ground truth wins for auth‑related fields
+    merged = dict(parsed)
+    merged["app_id"] = app["app_id"]
+    merged["name"] = name
+    merged["category"] = app["category"]
+    merged["website_hint"] = app["website_hint"]
+
+    if composio_hit and composio_hit.get("found"):
+        merged["composio_toolkit_exists"] = True
+        merged["composio_auth_schemes"] = composio_hit.get("auth_schemes", [])
+        if merged.get("buildability_verdict") == "no":
+            merged["buildability_verdict"] = "yes"
+            merged["blocker"] = None
+    else:
+        merged["composio_toolkit_exists"] = False
+        merged.setdefault("composio_auth_schemes", [])
+
+    try:
+        validated = AppResearch(**merged)
+        return {"result": validated.model_dump(), "status": "ok", "note": ""}
+    except ValidationError as e:
+        return {
+            "result": None,
+            "status": "validation_failed",
+            "note": f"Schema validation failed: {e}",
+        }
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--limit", type=int, default=None, help="Only process the first N apps")
+    parser.add_argument("--out", default="output/pass_1.json", help="Output file path")
+    args = parser.parse_args()
+
+    load_dotenv()
+    composio_key = os.getenv("COMPOSIO_API_KEY")
+    if not composio_key:
+        sys.exit("COMPOSIO_API_KEY not set in .env")
+
+    composio_client = Composio(api_key=composio_key)
+    composio_session = composio_client.create(user_id="research_agent_dev")
+
+    apps = load_apps(args.limit)
+    print(f"Processing {len(apps)} app(s)...")
+
+    results = []
+    failures = []
+
+    for i, app in enumerate(apps, 1):
+        print(f"[{i}/{len(apps)}] {app['name']}...", end=" ", flush=True)
+        outcome = process_one_app(composio_client, composio_session, app)
+
+        if outcome["status"] == "ok":
+            results.append(outcome["result"])
+            print("done")
+        else:
+            failures.append({"app": app["name"], "status": outcome["status"], "note": outcome["note"]})
+            print(f"FAILED ({outcome['status']})")
+
+        time.sleep(1)  # rate‑limit courtesy
+
+    os.makedirs(os.path.dirname(args.out), exist_ok=True)
+    with open(args.out, "w") as f:
+        json.dump(results, f, indent=2)
+
+    failures_path = args.out.replace(".json", "_failures.json")
+    with open(failures_path, "w") as f:
+        json.dump(failures, f, indent=2)
+
+    print(f"\nDone. {len(results)} succeeded, {len(failures)} failed.")
+    print(f"Results:  {args.out}")
+    if failures:
+        print(f"Failures: {failures_path}  (review these manually)")
+
+
+if __name__ == "__main__":
+    main()
+======================================================================
+FILE: composio_lookup.py
+======================================================================
+"""
+composio_lookup.py
+
+Tier 1 of the research pipeline: before asking an LLM to guess anything,
+check whether Composio already ships a toolkit for this app. If it does,
+we get REAL production auth-scheme data straight from Composio's own
+catalog -- no inference needed, and it's automatic proof of buildability
+(they already built it).
+
+IMPORTANT: run explore_composio.py first and confirm the field names
+below (enabled, composio_managed_auth_schemes) match what your SDK
+version actually returns. Adjust if they don't.
+"""
+
+import re
+from typing import Optional, Dict, Any
+
+
+def _slug_candidates(app_name: str) -> list[str]:
+    """
+    Composio toolkit slugs are typically the app name, lowercased, with
+    spaces removed (e.g. "Google Ads" -> "googleads"). We don't know the
+    exact convention for every app, so we try a few reasonable variants
+    in order, most-likely-first.
+    """
+    base = re.sub(r"[^a-zA-Z0-9 ]", "", app_name).strip().lower()
+    no_space = base.replace(" ", "")
+    underscored = base.replace(" ", "_")
+    hyphenated = base.replace(" ", "-")
+    first_word = base.split(" ")[0] if " " in base else base
+
+    # dict.fromkeys() dedupes while preserving order (first match wins)
+    return list(dict.fromkeys([no_space, underscored, hyphenated, first_word]))
+
+
+def lookup_toolkit(composio, app_name: str) -> Optional[Dict[str, Any]]:
+    """
+    Returns a normalized dict if Composio has this toolkit, else None.
+    Tries direct slug lookups first (cheap, exact), then falls back to
+    a client-side search over toolkits.list() if the direct lookups fail.
+    """
+    for slug in _slug_candidates(app_name):
+        try:
+            result = composio.toolkits.get(slug)
+            return _normalize(result, matched_via=f"direct slug '{slug}'")
+        except Exception:
+            continue  # this slug guess was wrong, try the next one
+
+    # Fallback: list all toolkits and look for a name match. Wrapped in
+    # try/except because list() signature/pagination may vary by version --
+    # see explore_composio.py output before relying on this path.
+    try:
+        listing = composio.toolkits.list()
+        items = getattr(listing, "items", listing)  # handle both shapes
+        for item in items:
+            name = getattr(item, "name", None) or item.get("name", "")
+            if name.strip().lower() == app_name.strip().lower():
+                slug = getattr(item, "slug", None) or item.get("slug")
+                result = composio.toolkits.get(slug)
+                return _normalize(result, matched_via="list search")
+    except Exception:
+        pass
+
+    return None
+
+
+def _normalize(result, matched_via: str) -> Dict[str, Any]:
+    """Turn whatever object type Composio returns into a plain dict."""
+    if hasattr(result, "model_dump"):
+        data = result.model_dump()
+    elif hasattr(result, "dict"):
+        data = result.dict()
+    elif isinstance(result, dict):
+        data = result
+    else:
+        data = {"raw": str(result)}
+
+    return {
+        "found": True,
+        "matched_via": matched_via,
+        "enabled": data.get("enabled", True),
+        "auth_schemes": data.get("composio_managed_auth_schemes", []),
+        "slug": data.get("slug"),
+        "raw": data,  # kept for debugging, not written to the final schema
+    }
+
+
+if __name__ == "__main__":
+    import os
+    from dotenv import load_dotenv
+    from composio import Composio
+
+    load_dotenv()
+    composio = Composio(api_key=os.getenv("COMPOSIO_API_KEY"))
+
+    # Quick manual test across a few apps from the list -- one that should
+    # definitely exist (GitHub), one obscure one that probably doesn't.
+    for name in ["GitHub", "Stripe", "fanbasis", "Waterfall.io"]:
+        result = lookup_toolkit(composio, name)
+        print(f"{name}: {result if result else 'not found in Composio catalog'}")
+
+======================================================================
+FILE: explore_composio.py
+======================================================================
+"""
+explore_composio.py
+
+Run this BEFORE trusting composio_lookup.py. Composio's SDK response
+shapes can drift between versions, and I can't test against your live
+account from here -- so this prints the raw response for a couple of
+known toolkits (github, stripe) so you can see the actual field names
+your SDK version returns, and adjust composio_lookup.py if anything
+doesn't match.
+
+Run with:  python explore_composio.py
+"""
+
+import json
+import os
+from dotenv import load_dotenv
+from composio import Composio
+
+load_dotenv()
+composio = Composio(api_key=os.getenv("COMPOSIO_API_KEY"))
+
+for slug in ["github", "stripe", "slack"]:
+    print(f"\n{'=' * 50}\ntoolkits.get('{slug}')\n{'=' * 50}")
+    try:
+        result = composio.toolkits.get(slug)
+        # result is likely a pydantic model -- try the common ways to
+        # turn it into plain JSON for inspection
+        if hasattr(result, "model_dump"):
+            print(json.dumps(result.model_dump(), indent=2, default=str))
+        elif hasattr(result, "dict"):
+            print(json.dumps(result.dict(), indent=2, default=str))
+        else:
+            print(result)
+    except Exception as e:
+        print(f"Lookup failed: {type(e).__name__}: {e}")
+
+print(f"\n{'=' * 50}\ntoolkits.list() -- first few results\n{'=' * 50}")
+try:
+    listing = composio.toolkits.list()
+    print(json.dumps(listing, indent=2, default=str)[:2000])
+except Exception as e:
+    print(f"List failed: {type(e).__name__}: {e}")
+
+print(
+    "\nLook at the printed fields above. In particular, check:\n"
+    " - What key holds the auth scheme(s)? (assumed: composio_managed_auth_schemes)\n"
+    " - What key confirms the toolkit is active? (assumed: enabled)\n"
+    " - Does toolkits.list() accept a search/query param for fuzzy name matching?\n"
+    "If any of these differ, update the field names in composio_lookup.py."
+)
+
+======================================================================
+FILE: export_code.py
+======================================================================
+import os
+
+project_dir = r"D:\PROJECTS\Composio_assignment"  # change this
+output_file = "project_code.txt"
+
+# Only include meaningful code files
+include_extensions = {
+    ".py", ".js", ".ts", ".html", ".css",
+    ".cpp", ".c", ".java", ".json", ".env", ".md"
+}
+
+# Folders to ignore
+exclude_dirs = {
+    "node_modules", ".git", "__pycache__",
+    "dist", "build", ".next", "venv", ".vscode"
+}
+
+# Files to ignore
+exclude_files = {
+    "package-lock.json", "yarn.lock"
+}
+
+# Max file size -> 200 KB
+MAX_FILE_SIZE = 200 * 1024
+
+total_lines = 0
+
+with open(output_file, "w", encoding="utf-8") as outfile:
+    for root, dirs, files in os.walk(project_dir):
+
+        # Remove unwanted directories
+        dirs[:] = [d for d in dirs if d not in exclude_dirs]
+
+        for file in files:
+            file_path = os.path.join(root, file)
+            rel_path = os.path.relpath(file_path, project_dir)
+
+            # Skip unwanted files
+            if file in exclude_files:
+                continue
+
+            # Skip by extension
+            _, ext = os.path.splitext(file)
+            if ext.lower() not in include_extensions:
+                continue
+
+            # Skip minified files
+            if ".min." in file:
+                continue
+
+            # Skip large files
+            if os.path.getsize(file_path) > MAX_FILE_SIZE:
+                continue
+
+            try:
+                with open(file_path, "r", encoding="utf-8") as infile:
+                    lines = infile.readlines()
+
+                # Skip files with too many lines (likely generated)
+                if len(lines) > 2000:
+                    continue
+
+                outfile.write("\n" + "="*70 + "\n")
+                outfile.write(f"FILE: {rel_path}\n")
+                outfile.write("="*70 + "\n")
+
+                outfile.writelines(lines)
+                total_lines += len(lines)
+
+            except:
+                continue
+
+print(f"✅ Done! Clean code exported. Total lines: {total_lines}")
+======================================================================
+FILE: README.md
+======================================================================
+# App Research Agent -- Phase 1 setup
+
+This is the scaffold for the Composio take-home: an agent that researches
+100 apps and reports auth patterns, self-serve status, API surface, and
+buildability. This README covers Phase 1 only -- getting your environment
+ready. Later phases (the agent itself, verification, the HTML report)
+build on top of this.
+
+## What's already here
+
+```
+project/
+  data/apps.json      the 100 apps from the assignment, structured and ready
+  schema.py            the exact "form" every researched app must match
+  requirements.txt      python packages this project needs
+  .env.example          template for your API keys (copy to .env)
+  test_setup.py          run this to confirm Composio is wired up correctly
+  output/                 where research results will be saved (Phase 2+)
+```
+
+## Step 1: Python environment
+
+You need Python 3.10 or newer. Check with:
+
+```bash
+python3 --version
+```
+
+Create an isolated environment so this project's packages don't clash
+with anything else on your machine, then install dependencies:
+
+```bash
+cd project
+python3 -m venv .venv
+source .venv/bin/activate      # on Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+You'll know it worked if `pip list` shows `composio`, `pydantic`,
+`anthropic`, and `python-dotenv`.
+
+## Step 2: Git repo
+
+This will become the repo you submit, so set it up now:
+
+```bash
+git init
+git add .
+git commit -m "Phase 1: schema, repo scaffold, data/apps.json"
+```
+
+Then create an empty repo on GitHub and push:
+
+```bash
+git remote add origin <your-repo-url>
+git branch -M main
+git push -u origin main
+```
+
+## Step 3: Composio account
+
+1. Go to composio.dev and sign up (GitHub or email works).
+2. Once logged in, open the dashboard and find **Settings > API Keys**.
+3. Create a new API key and copy it -- you won't be able to see it again,
+   so paste it somewhere safe immediately.
+4. In this project folder, copy the env template and fill it in:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+   Open `.env` and paste your key after `COMPOSIO_API_KEY=`.
+
+5. You'll also need an Anthropic API key (console.anthropic.com) for the
+   agent's reasoning step in Phase 2 -- paste that in `ANTHROPIC_API_KEY=`
+   too, even though we're not using it yet.
+
+**Never commit `.env`.** It's already excluded via `.gitignore`, but
+double check before you push.
+
+## Step 4: Verify the connection
+
+```bash
+python test_setup.py
+```
+
+Expected output looks like:
+
+```
+Connected to Composio.
+Session ID: ...
+Session has N meta tool(s) available:
+ - COMPOSIO_SEARCH_...
+ - ...
+Setup looks good. You're ready for Phase 2 (the research agent).
+```
+
+If this fails, the error message will tell you which piece is missing --
+usually a blank or mistyped API key. Fix `.env` and rerun.
+
+## Step 5: Sanity-check the schema
+
+```bash
+python schema.py
+```
+
+This should print a validated example entry for Stripe as JSON. If you
+edit `schema.py` and break something (e.g. set `api_surface="restt"`),
+rerunning this will show you a validation error -- that's the schema
+doing its job.
+
+## Phase 2: the research agent
+
+New files:
+
+```
+explore_composio.py    run this FIRST -- prints Composio's raw toolkit
+                         data so you can confirm field names match what
+                         composio_lookup.py expects
+composio_lookup.py       tier 1: checks if Composio already has a
+                         toolkit for the app (ground-truth auth data)
+web_researcher.py         tier 2: Claude + web search fills in everything
+                         else, for apps not in Composio's catalog
+agent.py                   orchestrator -- loops over all 100 apps,
+                         merges both tiers, validates, saves results
+```
+
+### Run order
+
+```bash
+# 1. Confirm Composio's API shape matches what the code expects
+python explore_composio.py
+
+# 2. Smoke-test the web researcher on one app
+python web_researcher.py
+
+# 3. Test the full pipeline on 5 apps before spending real API calls on 100
+python agent.py --limit 5
+
+# 4. Check output/pass_1.json and output/pass_1_failures.json, then
+#    run the full batch once you're happy with the results
+python agent.py
+```
+
+### What to expect
+
+- Each app costs one Claude API call with web search (billed per search +
+  tokens) plus one fast, free-ish Composio lookup. Budget accordingly --
+  run `--limit 5` and `--limit 20` before committing to all 100.
+- Failures are expected and saved separately, not silently dropped --
+  check `output/pass_1_failures.json` after each run.
+- This is deliberately the *fast, minimally-verified* first pass. Phase 4
+  (verification) is where accuracy gets measured and improved -- don't
+  try to make this pass perfect, that's not the point of a first pass.
+
+## What's next (Phase 3)
+
+Once `output/pass_1.json` has all 100 apps (or as many as succeeded),
+Phase 3 is the verification loop: sample ~15-20 apps, hand-check them
+against the real docs, measure this pass's accuracy, then run a
+stricter second pass and measure the improvement.
+
+======================================================================
+FILE: schema.py
+======================================================================
+"""
+schema.py
+
+This defines the exact "form" every app's research result must fill out.
+Using pydantic means Python will automatically REJECT any data that doesn't
+match this shape -- e.g. if the agent tries to save buildability_verdict
+as "maybe", it will error instead of silently corrupting your dataset.
+
+Beginner note: a "Literal" type means "must be exactly one of these strings" --
+it's how we enforce the fixed vocabulary (rest/graphql/none/unknown, etc.)
+so results can actually be clustered later, instead of every entry using
+slightly different wording for the same idea.
+"""
+
+from typing import List, Literal, Optional
+from pydantic import BaseModel, Field
+
+
+AuthMethod = Literal["oauth2", "api_key", "basic", "token", "other", "unknown"]
+ApiSurface = Literal["rest", "graphql", "rest_and_graphql", "none", "unknown"]
+BuildabilityVerdict = Literal["yes", "partial", "no"]
+Confidence = Literal["high", "medium", "low"]
+
+
+class AppResearch(BaseModel):
+    app_id: int = Field(..., description="Matches the # from the source list, 1-100")
+    name: str
+    category: str
+    website_hint: str
+
+    one_liner: str = Field(..., description="What the app does, one sentence")
+
+    auth_methods: List[AuthMethod] = Field(
+        default_factory=list,
+        description="Every auth method mentioned in the docs, can be more than one",
+    )
+
+    self_serve: bool = Field(
+        ..., description="Can a developer get credentials themselves, free or on trial"
+    )
+    self_serve_basis: str = Field(
+        ..., description="Why you concluded that -- your evidence, in your own words"
+    )
+    gating_reason: Optional[str] = Field(
+        default=None, description="If not self-serve, what's blocking it"
+    )
+
+    api_surface: ApiSurface
+    api_breadth_note: str = Field(
+        default="", description="Roughly how broad the API is, in a phrase"
+    )
+    mcp_exists: bool = Field(default=False)
+    mcp_note: Optional[str] = Field(default=None)
+
+    buildability_verdict: BuildabilityVerdict
+    blocker: Optional[str] = Field(
+        default=None, description="Main blocker if verdict is not 'yes'"
+    )
+
+    # Ground-truth signal from Composio's own catalog, distinct from
+    # mcp_exists (which is about third-party MCP servers found via research).
+    # If Composio already ships this toolkit, that's strong evidence for
+    # buildability and for the real auth scheme used in production.
+    composio_toolkit_exists: bool = Field(default=False)
+    composio_auth_schemes: List[str] = Field(default_factory=list)
+
+    evidence_urls: List[str] = Field(
+        default_factory=list, description="The actual docs pages used as evidence"
+    )
+    confidence: Confidence
+
+    # Filled in during Phase 4 (verification), not during first research pass
+    verified: bool = Field(default=False)
+    verification_note: Optional[str] = Field(default=None)
+
+
+if __name__ == "__main__":
+    # Quick sanity check: this should print without errors.
+    # Try changing "rest" to "restt" below to see pydantic reject bad data.
+    example = AppResearch(
+        app_id=81,
+        name="Stripe",
+        category="Finance and Fintech",
+        website_hint="stripe.com/docs/api",
+        one_liner="Payments, billing, and financial infrastructure API",
+        auth_methods=["api_key"],
+        self_serve=True,
+        self_serve_basis="Dashboard signup gives instant test-mode API keys",
+        api_surface="rest",
+        api_breadth_note="Very broad -- payments, subscriptions, connect, invoicing",
+        mcp_exists=False,
+        buildability_verdict="yes",
+        evidence_urls=["https://stripe.com/docs/api"],
+        confidence="high",
+        composio_toolkit_exists=True,
+        composio_auth_schemes=["api_key"],
+    )
+    print("Schema OK. Example entry:")
+    print(example.model_dump_json(indent=2))
+
+======================================================================
+FILE: test_setup.py
+======================================================================
+"""
+test_setup.py
+
+Run this once after signing up for Composio and filling in .env.
+It does nothing "real" yet -- it just proves your API key works and that
+you can create a session and list some available tools. This is the
+"hello world" checkpoint before you write any research logic.
+
+Run with:  python test_setup.py
+"""
+
+import os
+from dotenv import load_dotenv
+from composio import Composio
+
+load_dotenv()
+
+api_key = os.getenv("COMPOSIO_API_KEY")
+if not api_key:
+    raise SystemExit(
+        "COMPOSIO_API_KEY not set. Copy .env.example to .env and fill it in."
+    )
+
+composio = Composio(api_key=api_key)
+
+# A session is Composio's unit of "an agent acting on behalf of one user".
+# For this project there's no real end-user -- we're the only user -- so
+# any stable string works as the user_id. Using the same one every run
+# lets Composio reuse auth/connections instead of creating new ones.
+session = composio.create(user_id="research_agent_dev")
+
+print("Connected to Composio.")
+print("Session ID:", session.session_id)
+
+# session.tools() returns a small set of *meta* tools (search, connect,
+# execute) rather than loading thousands of app-specific tool schemas --
+# that's what we'll hand to the LLM in Phase 2 to let it search the web
+# and fetch docs pages for each app.
+tools = session.tools()
+print(f"Session has {len(tools)} meta tool(s) available:")
+for t in tools:
+    name = t.get("function", {}).get("name", t.get("name", "unknown"))
+    print(" -", name)
+
+print("\nSetup looks good. You're ready for Phase 2 (the research agent).")
+
+======================================================================
+FILE: web_researcher.py
+======================================================================
+"""
+web_researcher.py
+
+Tier 2: Uses Composio meta-tools (search + fetch) + free Gemini model
+to research an app and return structured JSON matching the schema.
+"""
+
+import json
+import os
+import re
+from typing import Optional, Tuple, List, Dict, Any
+
+from google import genai
+from google.genai import types
+from dotenv import load_dotenv
+from composio import Composio
+
+load_dotenv()
+
+# ---------- Config ----------
+# Current free models (Aug 2026). Try in this order.
+GEMINI_MODELS = [
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-001",
+    "gemini-1.5-flash",
+    "gemini-1.5-flash-latest",
+    "gemini-flash-latest",
+]
+
+MAX_SEARCH_RESULTS = 5
+MAX_FETCH_CHARS = 5000
+
+SYSTEM_PROMPT = """You are a research agent investigating a SaaS app's developer/API surface for a technical due-diligence report.
+
+You will be given search results and (sometimes) the actual content of documentation pages.
+Answer ONLY based on the provided evidence. Never invent or guess.
+
+Respond with ONLY a single JSON object, no prose, no markdown fences. Use exactly these keys:
+
+{
+  "one_liner": "string, what the app does, one sentence",
+  "auth_methods": ["oauth2" | "api_key" | "basic" | "token" | "other" | "unknown"],
+  "self_serve": true | false,
+  "self_serve_basis": "string, your evidence for the self_serve determination",
+  "gating_reason": "string or null, only if self_serve is false",
+  "api_surface": "rest" | "graphql" | "rest_and_graphql" | "none" | "unknown",
+  "api_breadth_note": "string, roughly how broad the API is",
+  "mcp_exists": true | false,
+  "mcp_note": "string or null",
+  "buildability_verdict": "yes" | "partial" | "no",
+  "blocker": "string or null, only if verdict is not yes",
+  "evidence_urls": ["url", ...],
+  "confidence": "high" | "medium" | "low"
+}
+
+If the evidence is weak or missing, set confidence to "low" and do not invent URLs.
+"""
+
+
+def _extract_json(text: str) -> dict:
+    cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip(), flags=re.IGNORECASE)
+    return json.loads(cleaned)
+
+
+def _safe_execute(session, tool_name: str, params: dict):
+    """
+    Composio session.execute signature varies by version.
+    Try the most common patterns safely.
+    """
+    try:
+        # Newer style
+        return session.execute(tool_name, params)
+    except TypeError:
+        try:
+            # Some versions want a single dict
+            return session.execute({"name": tool_name, "arguments": params})
+        except Exception:
+            try:
+                # Older style
+                return session.execute(tool_name, **params)
+            except Exception as e:
+                return {"error": str(e)}
+
+
+def research_app(
+    composio_client: Composio,
+    app_name: str,
+    website_hint: str,
+    category: str,
+) -> Tuple[Optional[dict], str]:
+    """
+    Main research function.
+    Returns (parsed_dict or None, raw_text)
+    """
+    session = composio_client.create(user_id="research_agent")
+
+    # ---------- 1. Search ----------
+    search_query = f"{app_name} official API documentation authentication developer docs"
+    search_results = []
+
+    try:
+        tools = session.tools()
+        search_tool_name = None
+        for t in tools:
+            name = (t.get("function", {}) or {}).get("name") or t.get("name", "")
+            if "search" in name.lower():
+                search_tool_name = name
+                break
+
+        if search_tool_name:
+            result = _safe_execute(session, search_tool_name, {
+                "query": search_query,
+                "num_results": MAX_SEARCH_RESULTS
+            })
+
+            if isinstance(result, dict):
+                search_results = (
+                    result.get("results")
+                    or result.get("data")
+                    or result.get("items")
+                    or []
+                )
+            elif isinstance(result, list):
+                search_results = result
+            else:
+                search_results = [{"title": "Search", "url": "", "content": str(result)}]
+        else:
+            search_results = [{"title": app_name, "url": website_hint, "content": "No search tool found"}]
+    except Exception as e:
+        search_results = [{"title": "Search failed", "url": website_hint, "content": str(e)}]
+
+    # ---------- 2. Fetch top pages ----------
+    fetched_pages = []
+    for item in search_results[:2]:
+        url = item.get("url") or item.get("link") or item.get("href") or ""
+        if not url.startswith("http"):
+            continue
+
+        try:
+            fetch_tool_name = None
+            for t in session.tools():
+                name = (t.get("function", {}) or {}).get("name") or t.get("name", "")
+                if any(k in name.lower() for k in ["fetch", "browse", "scrape", "get_page", "read_url"]):
+                    fetch_tool_name = name
+                    break
+
+            if fetch_tool_name:
+                page = _safe_execute(session, fetch_tool_name, {"url": url})
+                content = str(page)[:MAX_FETCH_CHARS]
+                fetched_pages.append({"url": url, "content": content})
+            else:
+                # fallback to snippet
+                fetched_pages.append({
+                    "url": url,
+                    "content": item.get("content") or item.get("snippet") or item.get("description") or ""
+                })
+        except Exception:
+            continue
+
+    # ---------- 3. Build context ----------
+    context_parts = []
+    for i, r in enumerate(search_results[:MAX_SEARCH_RESULTS], 1):
+        context_parts.append(
+            f"[{i}] Title: {r.get('title', '')}\n"
+            f"URL: {r.get('url') or r.get('link') or r.get('href', '')}\n"
+            f"Snippet: {(r.get('content') or r.get('snippet') or r.get('description') or '')[:400]}"
+        )
+
+    for p in fetched_pages:
+        context_parts.append(f"\n--- Page content from {p['url']} ---\n{p['content']}")
+
+    context = "\n\n".join(context_parts) if context_parts else "No useful search results found."
+
+    user_prompt = (
+        f"App: {app_name}\n"
+        f"Category: {category}\n"
+        f"Website / hint: {website_hint}\n\n"
+        f"=== EVIDENCE ===\n{context}\n\n"
+        f"Based ONLY on the evidence above, fill the JSON object."
+    )
+
+    # ---------- 4. Call Gemini (new SDK) ----------
+    client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+    last_error = None
+    for model_name in GEMINI_MODELS:
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=user_prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM_PROMPT,
+                    temperature=0.1,
+                    max_output_tokens=1500,
+                    response_mime_type="application/json",
+                ),
+            )
+            full_text = response.text
+            parsed = _extract_json(full_text)
+            return parsed, full_text
+        except Exception as e:
+            last_error = str(e)
+            continue
+
+    return None, f"All Gemini models failed. Last error: {last_error}\n\nContext was:\n{context[:1200]}"
+
+
+# ---------- Smoke test ----------
+if __name__ == "__main__":
+    composio = Composio(api_key=os.getenv("COMPOSIO_API_KEY"))
+
+    parsed, raw = research_app(
+        composio,
+        "Waterfall.io",
+        "waterfall.io (contact/company intel)",
+        "Data, SEO and Scraping",
+    )
+
+    if parsed:
+        print("✅ Parsed successfully:")
+        print(json.dumps(parsed, indent=2))
+    else:
+        print("❌ Failed to parse. Raw output:")
+        print(raw)
+======================================================================
+FILE: data\apps.json
+======================================================================
+[
+  {"app_id": 1, "name": "Salesforce", "category": "CRM and Sales", "website_hint": "salesforce.com"},
+  {"app_id": 2, "name": "HubSpot", "category": "CRM and Sales", "website_hint": "hubspot.com"},
+  {"app_id": 3, "name": "Pipedrive", "category": "CRM and Sales", "website_hint": "pipedrive.com"},
+  {"app_id": 4, "name": "Attio", "category": "CRM and Sales", "website_hint": "attio.com"},
+  {"app_id": 5, "name": "Twenty", "category": "CRM and Sales", "website_hint": "twenty.com (open-source CRM)"},
+  {"app_id": 6, "name": "Podio", "category": "CRM and Sales", "website_hint": "podio.com"},
+  {"app_id": 7, "name": "Zoho CRM", "category": "CRM and Sales", "website_hint": "zoho.com/crm"},
+  {"app_id": 8, "name": "Close", "category": "CRM and Sales", "website_hint": "close.com"},
+  {"app_id": 9, "name": "Copper", "category": "CRM and Sales", "website_hint": "copper.com"},
+  {"app_id": 10, "name": "DealCloud", "category": "CRM and Sales", "website_hint": "api.docs.dealcloud.com"},
+
+  {"app_id": 11, "name": "Zendesk", "category": "Support and Helpdesk", "website_hint": "zendesk.com"},
+  {"app_id": 12, "name": "Intercom", "category": "Support and Helpdesk", "website_hint": "intercom.com"},
+  {"app_id": 13, "name": "Freshdesk", "category": "Support and Helpdesk", "website_hint": "freshdesk.com"},
+  {"app_id": 14, "name": "Front", "category": "Support and Helpdesk", "website_hint": "front.com"},
+  {"app_id": 15, "name": "Pylon", "category": "Support and Helpdesk", "website_hint": "usepylon.com"},
+  {"app_id": 16, "name": "LiveAgent", "category": "Support and Helpdesk", "website_hint": "liveagent.com"},
+  {"app_id": 17, "name": "Plain", "category": "Support and Helpdesk", "website_hint": "plain.com"},
+  {"app_id": 18, "name": "Help Scout", "category": "Support and Helpdesk", "website_hint": "helpscout.com"},
+  {"app_id": 19, "name": "Gorgias", "category": "Support and Helpdesk", "website_hint": "gorgias.com"},
+  {"app_id": 20, "name": "Gladly", "category": "Support and Helpdesk", "website_hint": "gladly.com"},
+
+  {"app_id": 21, "name": "Slack", "category": "Communications and Messaging", "website_hint": "slack.com"},
+  {"app_id": 22, "name": "Twilio", "category": "Communications and Messaging", "website_hint": "twilio.com"},
+  {"app_id": 23, "name": "Zoho Cliq", "category": "Communications and Messaging", "website_hint": "zoho.com/cliq"},
+  {"app_id": 24, "name": "Lark (Larksuite)", "category": "Communications and Messaging", "website_hint": "open.larksuite.com"},
+  {"app_id": 25, "name": "Pumble", "category": "Communications and Messaging", "website_hint": "pumble.com"},
+  {"app_id": 26, "name": "Discord", "category": "Communications and Messaging", "website_hint": "discord.com"},
+  {"app_id": 27, "name": "Telegram", "category": "Communications and Messaging", "website_hint": "core.telegram.org"},
+  {"app_id": 28, "name": "WhatsApp Business", "category": "Communications and Messaging", "website_hint": "developers.facebook.com/docs/whatsapp"},
+  {"app_id": 29, "name": "Aircall", "category": "Communications and Messaging", "website_hint": "aircall.io"},
+  {"app_id": 30, "name": "Vonage", "category": "Communications and Messaging", "website_hint": "developer.vonage.com"},
+
+  {"app_id": 31, "name": "Google Ads", "category": "Marketing, Ads, Email and Social", "website_hint": "developers.google.com/google-ads"},
+  {"app_id": 32, "name": "Meta Ads", "category": "Marketing, Ads, Email and Social", "website_hint": "developers.facebook.com/docs/marketing-apis"},
+  {"app_id": 33, "name": "LinkedIn Ads", "category": "Marketing, Ads, Email and Social", "website_hint": "learn.microsoft.com/linkedin/marketing"},
+  {"app_id": 34, "name": "GoHighLevel", "category": "Marketing, Ads, Email and Social", "website_hint": "highlevel.stoplight.io"},
+  {"app_id": 35, "name": "Mailchimp", "category": "Marketing, Ads, Email and Social", "website_hint": "mailchimp.com/developer"},
+  {"app_id": 36, "name": "Klaviyo", "category": "Marketing, Ads, Email and Social", "website_hint": "developers.klaviyo.com"},
+  {"app_id": 37, "name": "systeme.io", "category": "Marketing, Ads, Email and Social", "website_hint": "systeme.io (funnel builder)"},
+  {"app_id": 38, "name": "Pinterest", "category": "Marketing, Ads, Email and Social", "website_hint": "developers.pinterest.com"},
+  {"app_id": 39, "name": "Threads (Meta)", "category": "Marketing, Ads, Email and Social", "website_hint": "developers.facebook.com/docs/threads"},
+  {"app_id": 40, "name": "SendGrid", "category": "Marketing, Ads, Email and Social", "website_hint": "sendgrid.com"},
+
+  {"app_id": 41, "name": "Shopify", "category": "Ecommerce", "website_hint": "shopify.dev"},
+  {"app_id": 42, "name": "WooCommerce", "category": "Ecommerce", "website_hint": "woocommerce.com/document/woocommerce-rest-api"},
+  {"app_id": 43, "name": "BigCommerce", "category": "Ecommerce", "website_hint": "developer.bigcommerce.com"},
+  {"app_id": 44, "name": "Salesforce Commerce Cloud", "category": "Ecommerce", "website_hint": "developer.salesforce.com/docs/commerce"},
+  {"app_id": 45, "name": "Magento (Adobe Commerce)", "category": "Ecommerce", "website_hint": "developer.adobe.com/commerce"},
+  {"app_id": 46, "name": "Squarespace", "category": "Ecommerce", "website_hint": "developers.squarespace.com"},
+  {"app_id": 47, "name": "Ecwid", "category": "Ecommerce", "website_hint": "api-docs.ecwid.com"},
+  {"app_id": 48, "name": "Gumroad", "category": "Ecommerce", "website_hint": "gumroad.com/api"},
+  {"app_id": 49, "name": "Amazon Selling Partner", "category": "Ecommerce", "website_hint": "developer-docs.amazon.com/sp-api"},
+  {"app_id": 50, "name": "fanbasis", "category": "Ecommerce", "website_hint": "fanbasis.com"},
+
+  {"app_id": 51, "name": "DataForSEO", "category": "Data, SEO and Scraping", "website_hint": "docs.dataforseo.com"},
+  {"app_id": 52, "name": "SE Ranking", "category": "Data, SEO and Scraping", "website_hint": "seranking.com/api"},
+  {"app_id": 53, "name": "Ahrefs", "category": "Data, SEO and Scraping", "website_hint": "ahrefs.com/api"},
+  {"app_id": 54, "name": "MrScraper", "category": "Data, SEO and Scraping", "website_hint": "docs.mrscraper.com"},
+  {"app_id": 55, "name": "Apify", "category": "Data, SEO and Scraping", "website_hint": "docs.apify.com"},
+  {"app_id": 56, "name": "Firecrawl", "category": "Data, SEO and Scraping", "website_hint": "firecrawl.dev"},
+  {"app_id": 57, "name": "Bright Data", "category": "Data, SEO and Scraping", "website_hint": "brightdata.com"},
+  {"app_id": 58, "name": "Sherlock", "category": "Data, SEO and Scraping", "website_hint": "github.com/sherlock-project/sherlock"},
+  {"app_id": 59, "name": "Waterfall.io", "category": "Data, SEO and Scraping", "website_hint": "waterfall.io (contact/company intel)"},
+  {"app_id": 60, "name": "Clay", "category": "Data, SEO and Scraping", "website_hint": "clay.com"},
+
+  {"app_id": 61, "name": "GitHub", "category": "Developer, Infra and Data platforms", "website_hint": "docs.github.com/rest"},
+  {"app_id": 62, "name": "Vercel", "category": "Developer, Infra and Data platforms", "website_hint": "vercel.com/docs/rest-api"},
+  {"app_id": 63, "name": "Netlify", "category": "Developer, Infra and Data platforms", "website_hint": "docs.netlify.com/api"},
+  {"app_id": 64, "name": "Cloudflare", "category": "Developer, Infra and Data platforms", "website_hint": "developers.cloudflare.com/api"},
+  {"app_id": 65, "name": "Supabase", "category": "Developer, Infra and Data platforms", "website_hint": "supabase.com/docs"},
+  {"app_id": 66, "name": "Neo4j", "category": "Developer, Infra and Data platforms", "website_hint": "neo4j.com/docs/api"},
+  {"app_id": 67, "name": "Snowflake", "category": "Developer, Infra and Data platforms", "website_hint": "docs.snowflake.com"},
+  {"app_id": 68, "name": "MongoDB Atlas", "category": "Developer, Infra and Data platforms", "website_hint": "mongodb.com/docs/atlas/api"},
+  {"app_id": 69, "name": "Datadog", "category": "Developer, Infra and Data platforms", "website_hint": "docs.datadoghq.com/api"},
+  {"app_id": 70, "name": "Sentry", "category": "Developer, Infra and Data platforms", "website_hint": "docs.sentry.io/api"},
+
+  {"app_id": 71, "name": "Notion", "category": "Productivity and Project Management", "website_hint": "developers.notion.com"},
+  {"app_id": 72, "name": "Airtable", "category": "Productivity and Project Management", "website_hint": "airtable.com/developers"},
+  {"app_id": 73, "name": "Linear", "category": "Productivity and Project Management", "website_hint": "developers.linear.app"},
+  {"app_id": 74, "name": "Jira", "category": "Productivity and Project Management", "website_hint": "developer.atlassian.com"},
+  {"app_id": 75, "name": "Asana", "category": "Productivity and Project Management", "website_hint": "developers.asana.com"},
+  {"app_id": 76, "name": "Monday.com", "category": "Productivity and Project Management", "website_hint": "developer.monday.com"},
+  {"app_id": 77, "name": "ClickUp", "category": "Productivity and Project Management", "website_hint": "clickup.com/api"},
+  {"app_id": 78, "name": "Coda", "category": "Productivity and Project Management", "website_hint": "coda.io/developers"},
+  {"app_id": 79, "name": "Smartsheet", "category": "Productivity and Project Management", "website_hint": "smartsheet.com/developers"},
+  {"app_id": 80, "name": "Harvest", "category": "Productivity and Project Management", "website_hint": "harvestapp.com (help.getharvest.com/api-v2)"},
+
+  {"app_id": 81, "name": "Stripe", "category": "Finance and Fintech", "website_hint": "stripe.com/docs/api"},
+  {"app_id": 82, "name": "Plaid", "category": "Finance and Fintech", "website_hint": "plaid.com/docs"},
+  {"app_id": 83, "name": "Binance", "category": "Finance and Fintech", "website_hint": "binance-docs.github.io"},
+  {"app_id": 84, "name": "Paygent Connect", "category": "Finance and Fintech", "website_hint": "paygent (NMI-powered)"},
+  {"app_id": 85, "name": "iPayX", "category": "Finance and Fintech", "website_hint": "ipayx.ai/docs"},
+  {"app_id": 86, "name": "QuickBooks", "category": "Finance and Fintech", "website_hint": "developer.intuit.com"},
+  {"app_id": 87, "name": "Xero", "category": "Finance and Fintech", "website_hint": "developer.xero.com"},
+  {"app_id": 88, "name": "Brex", "category": "Finance and Fintech", "website_hint": "developer.brex.com"},
+  {"app_id": 89, "name": "Ramp", "category": "Finance and Fintech", "website_hint": "docs.ramp.com"},
+  {"app_id": 90, "name": "PitchBook", "category": "Finance and Fintech", "website_hint": "pitchbook.com (research API)"},
+
+  {"app_id": 91, "name": "NotebookLM", "category": "AI, Research and Media-native", "website_hint": "cloud.google.com/gemini (Enterprise API)"},
+  {"app_id": 92, "name": "Otter AI", "category": "AI, Research and Media-native", "website_hint": "help.otter.ai (MCP server)"},
+  {"app_id": 93, "name": "Fathom", "category": "AI, Research and Media-native", "website_hint": "fathom.video"},
+  {"app_id": 94, "name": "Consensus", "category": "AI, Research and Media-native", "website_hint": "consensus.app (OAuth requested)"},
+  {"app_id": 95, "name": "Reducto", "category": "AI, Research and Media-native", "website_hint": "reducto.ai (document parsing)"},
+  {"app_id": 96, "name": "Devin", "category": "AI, Research and Media-native", "website_hint": "docs.devin.ai (MCP)"},
+  {"app_id": 97, "name": "higgsfield", "category": "AI, Research and Media-native", "website_hint": "higgsfield.ai/cli (content suite)"},
+  {"app_id": 98, "name": "Mermaid CLI", "category": "AI, Research and Media-native", "website_hint": "github.com/mermaid-js/mermaid-cli"},
+  {"app_id": 99, "name": "YouTube Transcript", "category": "AI, Research and Media-native", "website_hint": "transcriptapi.com"},
+  {"app_id": 100, "name": "Grain", "category": "AI, Research and Media-native", "website_hint": "grain.com (meeting notes)"}
+]
+
+======================================================================
+FILE: output\pass_1.json
+======================================================================
+[]
+======================================================================
+FILE: output\pass_1_failures.json
+======================================================================
+[
+  {
+    "app": "Salesforce",
+    "status": "error",
+    "note": "research_app raised: 'ToolRouterSession' object has no attribute 'create'"
+  },
+  {
+    "app": "HubSpot",
+    "status": "error",
+    "note": "research_app raised: 'ToolRouterSession' object has no attribute 'create'"
+  },
+  {
+    "app": "Pipedrive",
+    "status": "error",
+    "note": "research_app raised: 'ToolRouterSession' object has no attribute 'create'"
+  },
+  {
+    "app": "Attio",
+    "status": "error",
+    "note": "research_app raised: 'ToolRouterSession' object has no attribute 'create'"
+  },
+  {
+    "app": "Twenty",
+    "status": "error",
+    "note": "research_app raised: 'ToolRouterSession' object has no attribute 'create'"
+  }
+]
