@@ -6,7 +6,7 @@ An automated research agent that analyzes 100 SaaS apps to extract authenticatio
 
 ## 📊 Live Case Study
 
-**[View the interactive dashboard →](ubiquitous-cranachan-c27c2a.netlify.app)**
+**[View the interactive dashboard →](https://ubiquitous-cranachan-c27c2a.netlify.app/)**
 
 The dashboard presents:
 - 5 headline findings
