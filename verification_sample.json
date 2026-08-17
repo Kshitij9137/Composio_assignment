@@ -1,0 +1,568 @@
+[
+  {
+    "app_id": 1,
+    "name": "Salesforce",
+    "category": "CRM and Sales",
+    "website_hint": "salesforce.com",
+    "one_liner": "Cloud-based customer relationship management (CRM) platform for managing sales, customer service, and business workflows.",
+    "auth_methods": [
+      "oauth2",
+      "token"
+    ],
+    "self_serve": true,
+    "self_serve_basis": "Free Salesforce Developer Edition accounts can be created instantly, offering immediate access to full API functionality and Connected App configuration.",
+    "gating_reason": null,
+    "api_surface": "rest_and_graphql",
+    "api_breadth_note": "Extremely broad, supporting standard/custom data objects, metadata, tooling, analytics, user administration, and pub/sub streaming APIs.",
+    "mcp_exists": true,
+    "mcp_note": "Community-maintained MCP servers are available to connect AI models to Salesforce APIs.",
+    "buildability_verdict": "yes",
+    "blocker": null,
+    "composio_toolkit_exists": true,
+    "composio_auth_schemes": [
+      "OAUTH2"
+    ],
+    "evidence_urls": [
+      "https://developer.salesforce.com/docs",
+      "https://developer.salesforce.com/signup"
+    ],
+    "confidence": "high",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 2,
+    "name": "HubSpot",
+    "category": "CRM and Sales",
+    "website_hint": "hubspot.com",
+    "one_liner": "Customer relationship management (CRM) platform offering sales, marketing, and customer service APIs.",
+    "auth_methods": [
+      "oauth2",
+      "token"
+    ],
+    "self_serve": true,
+    "self_serve_basis": "Developers can sign up for a free HubSpot Developer Account instantly and create private apps or OAuth apps to generate API tokens.",
+    "gating_reason": null,
+    "api_surface": "rest_and_graphql",
+    "api_breadth_note": "Extremely broad, covering CRM objects (contacts, deals, companies, tickets), custom objects, marketing automation, CMS, workflows, and webhooks.",
+    "mcp_exists": true,
+    "mcp_note": "Multiple community-maintained MCP servers exist for interacting with HubSpot CRM contacts, companies, deals, and tasks.",
+    "buildability_verdict": "yes",
+    "blocker": null,
+    "composio_toolkit_exists": true,
+    "composio_auth_schemes": [
+      "OAUTH2"
+    ],
+    "evidence_urls": [
+      "https://developers.hubspot.com/",
+      "https://developers.hubspot.com/docs/api/overview"
+    ],
+    "confidence": "high",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 11,
+    "name": "Zendesk",
+    "category": "Support and Helpdesk",
+    "website_hint": "zendesk.com",
+    "one_liner": "Could not research Zendesk \u2013 API unavailable",
+    "auth_methods": [
+      "unknown"
+    ],
+    "self_serve": false,
+    "self_serve_basis": "Gemini API failed: 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}",
+    "gating_reason": "Unable to verify due to API error",
+    "api_surface": "unknown",
+    "api_breadth_note": "",
+    "mcp_exists": false,
+    "mcp_note": null,
+    "buildability_verdict": "yes",
+    "blocker": null,
+    "composio_toolkit_exists": true,
+    "composio_auth_schemes": [
+      "OAUTH2"
+    ],
+    "evidence_urls": [
+      "zendesk.com"
+    ],
+    "confidence": "low",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 12,
+    "name": "Intercom",
+    "category": "Support and Helpdesk",
+    "website_hint": "intercom.com",
+    "one_liner": "AI-first customer service platform for support, messaging, and ticket management",
+    "auth_methods": [
+      "oauth2",
+      "token"
+    ],
+    "self_serve": true,
+    "self_serve_basis": "Developers can create a free Developer Workspace via the Intercom Developer Hub to get immediate access to access tokens and test APIs.",
+    "gating_reason": null,
+    "api_surface": "rest",
+    "api_breadth_note": "Broad REST API covering conversations, tickets, contacts, articles, admins, teams, data attributes, and webhooks.",
+    "mcp_exists": true,
+    "mcp_note": "Community-maintained MCP servers exist for Intercom API integration.",
+    "buildability_verdict": "yes",
+    "blocker": null,
+    "composio_toolkit_exists": true,
+    "composio_auth_schemes": [
+      "OAUTH2"
+    ],
+    "evidence_urls": [
+      "https://developers.intercom.com",
+      "https://developers.intercom.com/docs/references/rest-api/"
+    ],
+    "confidence": "high",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 21,
+    "name": "Slack",
+    "category": "Communications and Messaging",
+    "website_hint": "slack.com",
+    "one_liner": "Could not research Slack \u2013 API unavailable",
+    "auth_methods": [
+      "unknown"
+    ],
+    "self_serve": false,
+    "self_serve_basis": "Gemini API failed: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}",
+    "gating_reason": "Unable to verify due to API error",
+    "api_surface": "unknown",
+    "api_breadth_note": "",
+    "mcp_exists": false,
+    "mcp_note": null,
+    "buildability_verdict": "yes",
+    "blocker": null,
+    "composio_toolkit_exists": true,
+    "composio_auth_schemes": [
+      "OAUTH2"
+    ],
+    "evidence_urls": [
+      "slack.com"
+    ],
+    "confidence": "low",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 22,
+    "name": "Twilio",
+    "category": "Communications and Messaging",
+    "website_hint": "twilio.com",
+    "one_liner": "Could not research Twilio \u2013 API unavailable",
+    "auth_methods": [
+      "unknown"
+    ],
+    "self_serve": false,
+    "self_serve_basis": "Gemini API failed: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}",
+    "gating_reason": "Unable to verify due to API error",
+    "api_surface": "unknown",
+    "api_breadth_note": "",
+    "mcp_exists": false,
+    "mcp_note": null,
+    "buildability_verdict": "no",
+    "blocker": "No reliable data obtained",
+    "composio_toolkit_exists": false,
+    "composio_auth_schemes": [],
+    "evidence_urls": [
+      "twilio.com"
+    ],
+    "confidence": "low",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 31,
+    "name": "Google Ads",
+    "category": "Marketing, Ads, Email and Social",
+    "website_hint": "developers.google.com/google-ads",
+    "one_liner": "Could not research Google Ads \u2013 API unavailable",
+    "auth_methods": [
+      "unknown"
+    ],
+    "self_serve": false,
+    "self_serve_basis": "Gemini API failed: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}",
+    "gating_reason": "Unable to verify due to API error",
+    "api_surface": "unknown",
+    "api_breadth_note": "",
+    "mcp_exists": false,
+    "mcp_note": null,
+    "buildability_verdict": "yes",
+    "blocker": null,
+    "composio_toolkit_exists": true,
+    "composio_auth_schemes": [
+      "OAUTH2"
+    ],
+    "evidence_urls": [
+      "developers.google.com/google-ads"
+    ],
+    "confidence": "low",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 32,
+    "name": "Meta Ads",
+    "category": "Marketing, Ads, Email and Social",
+    "website_hint": "developers.facebook.com/docs/marketing-apis",
+    "one_liner": "Could not research Meta Ads \u2013 API unavailable",
+    "auth_methods": [
+      "unknown"
+    ],
+    "self_serve": false,
+    "self_serve_basis": "Gemini API failed: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}",
+    "gating_reason": "Unable to verify due to API error",
+    "api_surface": "unknown",
+    "api_breadth_note": "",
+    "mcp_exists": false,
+    "mcp_note": null,
+    "buildability_verdict": "yes",
+    "blocker": null,
+    "composio_toolkit_exists": true,
+    "composio_auth_schemes": [],
+    "evidence_urls": [
+      "developers.facebook.com/docs/marketing-apis"
+    ],
+    "confidence": "low",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 41,
+    "name": "Shopify",
+    "category": "Ecommerce",
+    "website_hint": "shopify.dev",
+    "one_liner": "Could not research Shopify \u2013 API unavailable",
+    "auth_methods": [
+      "unknown"
+    ],
+    "self_serve": false,
+    "self_serve_basis": "Gemini API failed: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}",
+    "gating_reason": "Unable to verify due to API error",
+    "api_surface": "unknown",
+    "api_breadth_note": "",
+    "mcp_exists": false,
+    "mcp_note": null,
+    "buildability_verdict": "yes",
+    "blocker": null,
+    "composio_toolkit_exists": true,
+    "composio_auth_schemes": [],
+    "evidence_urls": [
+      "shopify.dev"
+    ],
+    "confidence": "low",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 42,
+    "name": "WooCommerce",
+    "category": "Ecommerce",
+    "website_hint": "woocommerce.com/document/woocommerce-rest-api",
+    "one_liner": "Could not research WooCommerce \u2013 API unavailable",
+    "auth_methods": [
+      "unknown"
+    ],
+    "self_serve": false,
+    "self_serve_basis": "Gemini API failed: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}",
+    "gating_reason": "Unable to verify due to API error",
+    "api_surface": "unknown",
+    "api_breadth_note": "",
+    "mcp_exists": false,
+    "mcp_note": null,
+    "buildability_verdict": "no",
+    "blocker": "No reliable data obtained",
+    "composio_toolkit_exists": false,
+    "composio_auth_schemes": [],
+    "evidence_urls": [
+      "woocommerce.com/document/woocommerce-rest-api"
+    ],
+    "confidence": "low",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 51,
+    "name": "DataForSEO",
+    "category": "Data, SEO and Scraping",
+    "website_hint": "docs.dataforseo.com",
+    "one_liner": "Could not research DataForSEO \u2013 API unavailable",
+    "auth_methods": [
+      "unknown"
+    ],
+    "self_serve": false,
+    "self_serve_basis": "Gemini API failed: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}",
+    "gating_reason": "Unable to verify due to API error",
+    "api_surface": "unknown",
+    "api_breadth_note": "",
+    "mcp_exists": false,
+    "mcp_note": null,
+    "buildability_verdict": "yes",
+    "blocker": null,
+    "composio_toolkit_exists": true,
+    "composio_auth_schemes": [],
+    "evidence_urls": [
+      "docs.dataforseo.com"
+    ],
+    "confidence": "low",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 52,
+    "name": "SE Ranking",
+    "category": "Data, SEO and Scraping",
+    "website_hint": "seranking.com/api",
+    "one_liner": "Could not research SE Ranking \u2013 API unavailable",
+    "auth_methods": [
+      "unknown"
+    ],
+    "self_serve": false,
+    "self_serve_basis": "Gemini API failed: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}",
+    "gating_reason": "Unable to verify due to API error",
+    "api_surface": "unknown",
+    "api_breadth_note": "",
+    "mcp_exists": false,
+    "mcp_note": null,
+    "buildability_verdict": "no",
+    "blocker": "No reliable data obtained",
+    "composio_toolkit_exists": false,
+    "composio_auth_schemes": [],
+    "evidence_urls": [
+      "seranking.com/api"
+    ],
+    "confidence": "low",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 61,
+    "name": "GitHub",
+    "category": "Developer, Infra and Data platforms",
+    "website_hint": "docs.github.com/rest",
+    "one_liner": "Could not research GitHub \u2013 API unavailable",
+    "auth_methods": [
+      "unknown"
+    ],
+    "self_serve": false,
+    "self_serve_basis": "Gemini API failed: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}",
+    "gating_reason": "Unable to verify due to API error",
+    "api_surface": "unknown",
+    "api_breadth_note": "",
+    "mcp_exists": false,
+    "mcp_note": null,
+    "buildability_verdict": "yes",
+    "blocker": null,
+    "composio_toolkit_exists": true,
+    "composio_auth_schemes": [
+      "OAUTH2"
+    ],
+    "evidence_urls": [
+      "docs.github.com/rest"
+    ],
+    "confidence": "low",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 62,
+    "name": "Vercel",
+    "category": "Developer, Infra and Data platforms",
+    "website_hint": "vercel.com/docs/rest-api",
+    "one_liner": "Could not research Vercel \u2013 API unavailable",
+    "auth_methods": [
+      "unknown"
+    ],
+    "self_serve": false,
+    "self_serve_basis": "Gemini API failed: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}",
+    "gating_reason": "Unable to verify due to API error",
+    "api_surface": "unknown",
+    "api_breadth_note": "",
+    "mcp_exists": false,
+    "mcp_note": null,
+    "buildability_verdict": "yes",
+    "blocker": null,
+    "composio_toolkit_exists": true,
+    "composio_auth_schemes": [],
+    "evidence_urls": [
+      "vercel.com/docs/rest-api"
+    ],
+    "confidence": "low",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 71,
+    "name": "Notion",
+    "category": "Productivity and Project Management",
+    "website_hint": "developers.notion.com",
+    "one_liner": "Could not research Notion \u2013 API unavailable",
+    "auth_methods": [
+      "unknown"
+    ],
+    "self_serve": false,
+    "self_serve_basis": "Gemini API failed: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}",
+    "gating_reason": "Unable to verify due to API error",
+    "api_surface": "unknown",
+    "api_breadth_note": "",
+    "mcp_exists": false,
+    "mcp_note": null,
+    "buildability_verdict": "yes",
+    "blocker": null,
+    "composio_toolkit_exists": true,
+    "composio_auth_schemes": [
+      "OAUTH2"
+    ],
+    "evidence_urls": [
+      "developers.notion.com"
+    ],
+    "confidence": "low",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 72,
+    "name": "Airtable",
+    "category": "Productivity and Project Management",
+    "website_hint": "airtable.com/developers",
+    "one_liner": "Could not research Airtable \u2013 API unavailable",
+    "auth_methods": [
+      "unknown"
+    ],
+    "self_serve": false,
+    "self_serve_basis": "Gemini API failed: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}",
+    "gating_reason": "Unable to verify due to API error",
+    "api_surface": "unknown",
+    "api_breadth_note": "",
+    "mcp_exists": false,
+    "mcp_note": null,
+    "buildability_verdict": "yes",
+    "blocker": null,
+    "composio_toolkit_exists": true,
+    "composio_auth_schemes": [
+      "OAUTH2"
+    ],
+    "evidence_urls": [
+      "airtable.com/developers"
+    ],
+    "confidence": "low",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 81,
+    "name": "Stripe",
+    "category": "Finance and Fintech",
+    "website_hint": "stripe.com/docs/api",
+    "one_liner": "Could not research Stripe \u2013 API unavailable",
+    "auth_methods": [
+      "unknown"
+    ],
+    "self_serve": false,
+    "self_serve_basis": "Gemini API failed: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}",
+    "gating_reason": "Unable to verify due to API error",
+    "api_surface": "unknown",
+    "api_breadth_note": "",
+    "mcp_exists": false,
+    "mcp_note": null,
+    "buildability_verdict": "yes",
+    "blocker": null,
+    "composio_toolkit_exists": true,
+    "composio_auth_schemes": [
+      "OAUTH2"
+    ],
+    "evidence_urls": [
+      "stripe.com/docs/api"
+    ],
+    "confidence": "low",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 82,
+    "name": "Plaid",
+    "category": "Finance and Fintech",
+    "website_hint": "plaid.com/docs",
+    "one_liner": "Could not research Plaid \u2013 API unavailable",
+    "auth_methods": [
+      "unknown"
+    ],
+    "self_serve": false,
+    "self_serve_basis": "Gemini API failed: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}",
+    "gating_reason": "Unable to verify due to API error",
+    "api_surface": "unknown",
+    "api_breadth_note": "",
+    "mcp_exists": false,
+    "mcp_note": null,
+    "buildability_verdict": "no",
+    "blocker": "No reliable data obtained",
+    "composio_toolkit_exists": false,
+    "composio_auth_schemes": [],
+    "evidence_urls": [
+      "plaid.com/docs"
+    ],
+    "confidence": "low",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 91,
+    "name": "NotebookLM",
+    "category": "AI, Research and Media-native",
+    "website_hint": "cloud.google.com/gemini (Enterprise API)",
+    "one_liner": "Could not research NotebookLM \u2013 API unavailable",
+    "auth_methods": [
+      "unknown"
+    ],
+    "self_serve": false,
+    "self_serve_basis": "Gemini API failed: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}",
+    "gating_reason": "Unable to verify due to API error",
+    "api_surface": "unknown",
+    "api_breadth_note": "",
+    "mcp_exists": false,
+    "mcp_note": null,
+    "buildability_verdict": "yes",
+    "blocker": null,
+    "composio_toolkit_exists": true,
+    "composio_auth_schemes": [],
+    "evidence_urls": [
+      "cloud.google.com/gemini (Enterprise API)"
+    ],
+    "confidence": "low",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 92,
+    "name": "Otter AI",
+    "category": "AI, Research and Media-native",
+    "website_hint": "help.otter.ai (MCP server)",
+    "one_liner": "Could not research Otter AI \u2013 API unavailable",
+    "auth_methods": [
+      "unknown"
+    ],
+    "self_serve": false,
+    "self_serve_basis": "Gemini API failed: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}",
+    "gating_reason": "Unable to verify due to API error",
+    "api_surface": "unknown",
+    "api_breadth_note": "",
+    "mcp_exists": false,
+    "mcp_note": null,
+    "buildability_verdict": "no",
+    "blocker": "No reliable data obtained",
+    "composio_toolkit_exists": false,
+    "composio_auth_schemes": [],
+    "evidence_urls": [
+      "help.otter.ai (MCP server)"
+    ],
+    "confidence": "low",
+    "verified": false,
+    "verification_note": null
+  }
+]
