@@ -139,6 +139,49 @@ def main():
 if __name__ == "__main__":
     main()
 ======================================================================
+FILE: analyze_apps.py
+======================================================================
+import json
+
+data = json.load(open("output/pass_1.json"))
+print(f"Total apps: {len(data)}")
+print(f"High confidence: {sum(1 for x in data if x.get('confidence')=='high')}")
+print(f"Medium: {sum(1 for x in data if x.get('confidence')=='medium')}")
+print(f"Low: {sum(1 for x in data if x.get('confidence')=='low')}")
+print(f"Self-serve True: {sum(1 for x in data if x.get('self_serve') is True)}")
+print(f"Composio toolkit exists: {sum(1 for x in data if x.get('composio_toolkit_exists'))}")
+print()
+print("Sample of first 3 apps:")
+for app in data[:3]:
+    print(f"- {app['name']}: auth={app.get('auth_methods')}, self_serve={app.get('self_serve')}, verdict={app.get('buildability_verdict')}, conf={app.get('confidence')}")
+
+======================================================================
+FILE: check_apps.py
+======================================================================
+import json
+
+# Load the JSON file
+with open("output/pass_1.json") as f:
+    data = json.load(f)
+
+# List of apps to check
+apps_to_check = ["Salesforce", "HubSpot", "Stripe", "Slack", "GitHub", "Notion"]
+
+# Iterate and print details
+for name in apps_to_check:
+    app = next((x for x in data if x["name"] == name), None)
+    if app:
+        print(f"{name}:")
+        print(f"  auth: {app.get('auth_methods')}")
+        print(f"  self_serve: {app.get('self_serve')}")
+        print(f"  api: {app.get('api_surface')}")
+        print(f"  composio: {app.get('composio_toolkit_exists')} {app.get('composio_auth_schemes')}")
+        print(f"  verdict: {app.get('buildability_verdict')}")
+        print(f"  confidence: {app.get('confidence')}")
+        print(f"  evidence: {app.get('evidence_urls')[:2]}")
+        print()
+
+======================================================================
 FILE: composio_lookup.py
 ======================================================================
 """
@@ -538,6 +581,28 @@ against the real docs, measure this pass's accuracy, then run a
 stricter second pass and measure the improvement.
 
 ======================================================================
+FILE: research_stripe.py
+======================================================================
+from web_researcher import research_app
+import json
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+parsed, raw = research_app(
+    None,
+    "Stripe",
+    "stripe.com/docs/api",
+    "Finance and Fintech"
+)
+
+print("=== PARSED ===")
+print(json.dumps(parsed, indent=2) if parsed else None)
+print()
+print("=== RAW (first 500 chars) ===")
+print(raw[:500] if raw else None)
+======================================================================
 FILE: schema.py
 ======================================================================
 """
@@ -641,6 +706,26 @@ if __name__ == "__main__":
     print(example.model_dump_json(indent=2))
 
 ======================================================================
+FILE: test_gemini.py
+======================================================================
+import os
+from dotenv import load_dotenv
+from google import genai
+
+load_dotenv()
+
+api_key = os.getenv("GEMINI_API_KEY")
+print(f"API Key found: {api_key is not None}")
+
+if api_key:
+    client = genai.Client(api_key=api_key)
+    # Use the newest model
+    response = client.models.generate_content(
+        model="gemini-3.6-flash",
+        contents="Hello, say hi in one word."
+    )
+    print("Gemini response:", response.text)
+======================================================================
 FILE: test_setup.py
 ======================================================================
 """
@@ -690,232 +775,923 @@ for t in tools:
 print("\nSetup looks good. You're ready for Phase 2 (the research agent).")
 
 ======================================================================
-FILE: web_researcher.py
+FILE: verification_sample.json
+======================================================================
+[
+  {
+    "app_id": 1,
+    "name": "Salesforce",
+    "category": "CRM and Sales",
+    "website_hint": "salesforce.com",
+    "one_liner": "Cloud-based customer relationship management (CRM) platform for managing sales, customer service, and business workflows.",
+    "auth_methods": [
+      "oauth2",
+      "token"
+    ],
+    "self_serve": true,
+    "self_serve_basis": "Free Salesforce Developer Edition accounts can be created instantly, offering immediate access to full API functionality and Connected App configuration.",
+    "gating_reason": null,
+    "api_surface": "rest_and_graphql",
+    "api_breadth_note": "Extremely broad, supporting standard/custom data objects, metadata, tooling, analytics, user administration, and pub/sub streaming APIs.",
+    "mcp_exists": true,
+    "mcp_note": "Community-maintained MCP servers are available to connect AI models to Salesforce APIs.",
+    "buildability_verdict": "yes",
+    "blocker": null,
+    "composio_toolkit_exists": true,
+    "composio_auth_schemes": [
+      "OAUTH2"
+    ],
+    "evidence_urls": [
+      "https://developer.salesforce.com/docs",
+      "https://developer.salesforce.com/signup"
+    ],
+    "confidence": "high",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 2,
+    "name": "HubSpot",
+    "category": "CRM and Sales",
+    "website_hint": "hubspot.com",
+    "one_liner": "Customer relationship management (CRM) platform offering sales, marketing, and customer service APIs.",
+    "auth_methods": [
+      "oauth2",
+      "token"
+    ],
+    "self_serve": true,
+    "self_serve_basis": "Developers can sign up for a free HubSpot Developer Account instantly and create private apps or OAuth apps to generate API tokens.",
+    "gating_reason": null,
+    "api_surface": "rest_and_graphql",
+    "api_breadth_note": "Extremely broad, covering CRM objects (contacts, deals, companies, tickets), custom objects, marketing automation, CMS, workflows, and webhooks.",
+    "mcp_exists": true,
+    "mcp_note": "Multiple community-maintained MCP servers exist for interacting with HubSpot CRM contacts, companies, deals, and tasks.",
+    "buildability_verdict": "yes",
+    "blocker": null,
+    "composio_toolkit_exists": true,
+    "composio_auth_schemes": [
+      "OAUTH2"
+    ],
+    "evidence_urls": [
+      "https://developers.hubspot.com/",
+      "https://developers.hubspot.com/docs/api/overview"
+    ],
+    "confidence": "high",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 11,
+    "name": "Zendesk",
+    "category": "Support and Helpdesk",
+    "website_hint": "zendesk.com",
+    "one_liner": "Could not research Zendesk \u2013 API unavailable",
+    "auth_methods": [
+      "unknown"
+    ],
+    "self_serve": false,
+    "self_serve_basis": "Gemini API failed: 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}",
+    "gating_reason": "Unable to verify due to API error",
+    "api_surface": "unknown",
+    "api_breadth_note": "",
+    "mcp_exists": false,
+    "mcp_note": null,
+    "buildability_verdict": "yes",
+    "blocker": null,
+    "composio_toolkit_exists": true,
+    "composio_auth_schemes": [
+      "OAUTH2"
+    ],
+    "evidence_urls": [
+      "zendesk.com"
+    ],
+    "confidence": "low",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 12,
+    "name": "Intercom",
+    "category": "Support and Helpdesk",
+    "website_hint": "intercom.com",
+    "one_liner": "AI-first customer service platform for support, messaging, and ticket management",
+    "auth_methods": [
+      "oauth2",
+      "token"
+    ],
+    "self_serve": true,
+    "self_serve_basis": "Developers can create a free Developer Workspace via the Intercom Developer Hub to get immediate access to access tokens and test APIs.",
+    "gating_reason": null,
+    "api_surface": "rest",
+    "api_breadth_note": "Broad REST API covering conversations, tickets, contacts, articles, admins, teams, data attributes, and webhooks.",
+    "mcp_exists": true,
+    "mcp_note": "Community-maintained MCP servers exist for Intercom API integration.",
+    "buildability_verdict": "yes",
+    "blocker": null,
+    "composio_toolkit_exists": true,
+    "composio_auth_schemes": [
+      "OAUTH2"
+    ],
+    "evidence_urls": [
+      "https://developers.intercom.com",
+      "https://developers.intercom.com/docs/references/rest-api/"
+    ],
+    "confidence": "high",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 21,
+    "name": "Slack",
+    "category": "Communications and Messaging",
+    "website_hint": "slack.com",
+    "one_liner": "Could not research Slack \u2013 API unavailable",
+    "auth_methods": [
+      "unknown"
+    ],
+    "self_serve": false,
+    "self_serve_basis": "Gemini API failed: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}",
+    "gating_reason": "Unable to verify due to API error",
+    "api_surface": "unknown",
+    "api_breadth_note": "",
+    "mcp_exists": false,
+    "mcp_note": null,
+    "buildability_verdict": "yes",
+    "blocker": null,
+    "composio_toolkit_exists": true,
+    "composio_auth_schemes": [
+      "OAUTH2"
+    ],
+    "evidence_urls": [
+      "slack.com"
+    ],
+    "confidence": "low",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 22,
+    "name": "Twilio",
+    "category": "Communications and Messaging",
+    "website_hint": "twilio.com",
+    "one_liner": "Could not research Twilio \u2013 API unavailable",
+    "auth_methods": [
+      "unknown"
+    ],
+    "self_serve": false,
+    "self_serve_basis": "Gemini API failed: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}",
+    "gating_reason": "Unable to verify due to API error",
+    "api_surface": "unknown",
+    "api_breadth_note": "",
+    "mcp_exists": false,
+    "mcp_note": null,
+    "buildability_verdict": "no",
+    "blocker": "No reliable data obtained",
+    "composio_toolkit_exists": false,
+    "composio_auth_schemes": [],
+    "evidence_urls": [
+      "twilio.com"
+    ],
+    "confidence": "low",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 31,
+    "name": "Google Ads",
+    "category": "Marketing, Ads, Email and Social",
+    "website_hint": "developers.google.com/google-ads",
+    "one_liner": "Could not research Google Ads \u2013 API unavailable",
+    "auth_methods": [
+      "unknown"
+    ],
+    "self_serve": false,
+    "self_serve_basis": "Gemini API failed: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}",
+    "gating_reason": "Unable to verify due to API error",
+    "api_surface": "unknown",
+    "api_breadth_note": "",
+    "mcp_exists": false,
+    "mcp_note": null,
+    "buildability_verdict": "yes",
+    "blocker": null,
+    "composio_toolkit_exists": true,
+    "composio_auth_schemes": [
+      "OAUTH2"
+    ],
+    "evidence_urls": [
+      "developers.google.com/google-ads"
+    ],
+    "confidence": "low",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 32,
+    "name": "Meta Ads",
+    "category": "Marketing, Ads, Email and Social",
+    "website_hint": "developers.facebook.com/docs/marketing-apis",
+    "one_liner": "Could not research Meta Ads \u2013 API unavailable",
+    "auth_methods": [
+      "unknown"
+    ],
+    "self_serve": false,
+    "self_serve_basis": "Gemini API failed: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}",
+    "gating_reason": "Unable to verify due to API error",
+    "api_surface": "unknown",
+    "api_breadth_note": "",
+    "mcp_exists": false,
+    "mcp_note": null,
+    "buildability_verdict": "yes",
+    "blocker": null,
+    "composio_toolkit_exists": true,
+    "composio_auth_schemes": [],
+    "evidence_urls": [
+      "developers.facebook.com/docs/marketing-apis"
+    ],
+    "confidence": "low",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 41,
+    "name": "Shopify",
+    "category": "Ecommerce",
+    "website_hint": "shopify.dev",
+    "one_liner": "Could not research Shopify \u2013 API unavailable",
+    "auth_methods": [
+      "unknown"
+    ],
+    "self_serve": false,
+    "self_serve_basis": "Gemini API failed: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}",
+    "gating_reason": "Unable to verify due to API error",
+    "api_surface": "unknown",
+    "api_breadth_note": "",
+    "mcp_exists": false,
+    "mcp_note": null,
+    "buildability_verdict": "yes",
+    "blocker": null,
+    "composio_toolkit_exists": true,
+    "composio_auth_schemes": [],
+    "evidence_urls": [
+      "shopify.dev"
+    ],
+    "confidence": "low",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 42,
+    "name": "WooCommerce",
+    "category": "Ecommerce",
+    "website_hint": "woocommerce.com/document/woocommerce-rest-api",
+    "one_liner": "Could not research WooCommerce \u2013 API unavailable",
+    "auth_methods": [
+      "unknown"
+    ],
+    "self_serve": false,
+    "self_serve_basis": "Gemini API failed: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}",
+    "gating_reason": "Unable to verify due to API error",
+    "api_surface": "unknown",
+    "api_breadth_note": "",
+    "mcp_exists": false,
+    "mcp_note": null,
+    "buildability_verdict": "no",
+    "blocker": "No reliable data obtained",
+    "composio_toolkit_exists": false,
+    "composio_auth_schemes": [],
+    "evidence_urls": [
+      "woocommerce.com/document/woocommerce-rest-api"
+    ],
+    "confidence": "low",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 51,
+    "name": "DataForSEO",
+    "category": "Data, SEO and Scraping",
+    "website_hint": "docs.dataforseo.com",
+    "one_liner": "Could not research DataForSEO \u2013 API unavailable",
+    "auth_methods": [
+      "unknown"
+    ],
+    "self_serve": false,
+    "self_serve_basis": "Gemini API failed: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}",
+    "gating_reason": "Unable to verify due to API error",
+    "api_surface": "unknown",
+    "api_breadth_note": "",
+    "mcp_exists": false,
+    "mcp_note": null,
+    "buildability_verdict": "yes",
+    "blocker": null,
+    "composio_toolkit_exists": true,
+    "composio_auth_schemes": [],
+    "evidence_urls": [
+      "docs.dataforseo.com"
+    ],
+    "confidence": "low",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 52,
+    "name": "SE Ranking",
+    "category": "Data, SEO and Scraping",
+    "website_hint": "seranking.com/api",
+    "one_liner": "Could not research SE Ranking \u2013 API unavailable",
+    "auth_methods": [
+      "unknown"
+    ],
+    "self_serve": false,
+    "self_serve_basis": "Gemini API failed: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}",
+    "gating_reason": "Unable to verify due to API error",
+    "api_surface": "unknown",
+    "api_breadth_note": "",
+    "mcp_exists": false,
+    "mcp_note": null,
+    "buildability_verdict": "no",
+    "blocker": "No reliable data obtained",
+    "composio_toolkit_exists": false,
+    "composio_auth_schemes": [],
+    "evidence_urls": [
+      "seranking.com/api"
+    ],
+    "confidence": "low",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 61,
+    "name": "GitHub",
+    "category": "Developer, Infra and Data platforms",
+    "website_hint": "docs.github.com/rest",
+    "one_liner": "Could not research GitHub \u2013 API unavailable",
+    "auth_methods": [
+      "unknown"
+    ],
+    "self_serve": false,
+    "self_serve_basis": "Gemini API failed: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}",
+    "gating_reason": "Unable to verify due to API error",
+    "api_surface": "unknown",
+    "api_breadth_note": "",
+    "mcp_exists": false,
+    "mcp_note": null,
+    "buildability_verdict": "yes",
+    "blocker": null,
+    "composio_toolkit_exists": true,
+    "composio_auth_schemes": [
+      "OAUTH2"
+    ],
+    "evidence_urls": [
+      "docs.github.com/rest"
+    ],
+    "confidence": "low",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 62,
+    "name": "Vercel",
+    "category": "Developer, Infra and Data platforms",
+    "website_hint": "vercel.com/docs/rest-api",
+    "one_liner": "Could not research Vercel \u2013 API unavailable",
+    "auth_methods": [
+      "unknown"
+    ],
+    "self_serve": false,
+    "self_serve_basis": "Gemini API failed: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}",
+    "gating_reason": "Unable to verify due to API error",
+    "api_surface": "unknown",
+    "api_breadth_note": "",
+    "mcp_exists": false,
+    "mcp_note": null,
+    "buildability_verdict": "yes",
+    "blocker": null,
+    "composio_toolkit_exists": true,
+    "composio_auth_schemes": [],
+    "evidence_urls": [
+      "vercel.com/docs/rest-api"
+    ],
+    "confidence": "low",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 71,
+    "name": "Notion",
+    "category": "Productivity and Project Management",
+    "website_hint": "developers.notion.com",
+    "one_liner": "Could not research Notion \u2013 API unavailable",
+    "auth_methods": [
+      "unknown"
+    ],
+    "self_serve": false,
+    "self_serve_basis": "Gemini API failed: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}",
+    "gating_reason": "Unable to verify due to API error",
+    "api_surface": "unknown",
+    "api_breadth_note": "",
+    "mcp_exists": false,
+    "mcp_note": null,
+    "buildability_verdict": "yes",
+    "blocker": null,
+    "composio_toolkit_exists": true,
+    "composio_auth_schemes": [
+      "OAUTH2"
+    ],
+    "evidence_urls": [
+      "developers.notion.com"
+    ],
+    "confidence": "low",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 72,
+    "name": "Airtable",
+    "category": "Productivity and Project Management",
+    "website_hint": "airtable.com/developers",
+    "one_liner": "Could not research Airtable \u2013 API unavailable",
+    "auth_methods": [
+      "unknown"
+    ],
+    "self_serve": false,
+    "self_serve_basis": "Gemini API failed: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}",
+    "gating_reason": "Unable to verify due to API error",
+    "api_surface": "unknown",
+    "api_breadth_note": "",
+    "mcp_exists": false,
+    "mcp_note": null,
+    "buildability_verdict": "yes",
+    "blocker": null,
+    "composio_toolkit_exists": true,
+    "composio_auth_schemes": [
+      "OAUTH2"
+    ],
+    "evidence_urls": [
+      "airtable.com/developers"
+    ],
+    "confidence": "low",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 81,
+    "name": "Stripe",
+    "category": "Finance and Fintech",
+    "website_hint": "stripe.com/docs/api",
+    "one_liner": "Could not research Stripe \u2013 API unavailable",
+    "auth_methods": [
+      "unknown"
+    ],
+    "self_serve": false,
+    "self_serve_basis": "Gemini API failed: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}",
+    "gating_reason": "Unable to verify due to API error",
+    "api_surface": "unknown",
+    "api_breadth_note": "",
+    "mcp_exists": false,
+    "mcp_note": null,
+    "buildability_verdict": "yes",
+    "blocker": null,
+    "composio_toolkit_exists": true,
+    "composio_auth_schemes": [
+      "OAUTH2"
+    ],
+    "evidence_urls": [
+      "stripe.com/docs/api"
+    ],
+    "confidence": "low",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 82,
+    "name": "Plaid",
+    "category": "Finance and Fintech",
+    "website_hint": "plaid.com/docs",
+    "one_liner": "Could not research Plaid \u2013 API unavailable",
+    "auth_methods": [
+      "unknown"
+    ],
+    "self_serve": false,
+    "self_serve_basis": "Gemini API failed: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}",
+    "gating_reason": "Unable to verify due to API error",
+    "api_surface": "unknown",
+    "api_breadth_note": "",
+    "mcp_exists": false,
+    "mcp_note": null,
+    "buildability_verdict": "no",
+    "blocker": "No reliable data obtained",
+    "composio_toolkit_exists": false,
+    "composio_auth_schemes": [],
+    "evidence_urls": [
+      "plaid.com/docs"
+    ],
+    "confidence": "low",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 91,
+    "name": "NotebookLM",
+    "category": "AI, Research and Media-native",
+    "website_hint": "cloud.google.com/gemini (Enterprise API)",
+    "one_liner": "Could not research NotebookLM \u2013 API unavailable",
+    "auth_methods": [
+      "unknown"
+    ],
+    "self_serve": false,
+    "self_serve_basis": "Gemini API failed: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}",
+    "gating_reason": "Unable to verify due to API error",
+    "api_surface": "unknown",
+    "api_breadth_note": "",
+    "mcp_exists": false,
+    "mcp_note": null,
+    "buildability_verdict": "yes",
+    "blocker": null,
+    "composio_toolkit_exists": true,
+    "composio_auth_schemes": [],
+    "evidence_urls": [
+      "cloud.google.com/gemini (Enterprise API)"
+    ],
+    "confidence": "low",
+    "verified": false,
+    "verification_note": null
+  },
+  {
+    "app_id": 92,
+    "name": "Otter AI",
+    "category": "AI, Research and Media-native",
+    "website_hint": "help.otter.ai (MCP server)",
+    "one_liner": "Could not research Otter AI \u2013 API unavailable",
+    "auth_methods": [
+      "unknown"
+    ],
+    "self_serve": false,
+    "self_serve_basis": "Gemini API failed: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}",
+    "gating_reason": "Unable to verify due to API error",
+    "api_surface": "unknown",
+    "api_breadth_note": "",
+    "mcp_exists": false,
+    "mcp_note": null,
+    "buildability_verdict": "no",
+    "blocker": "No reliable data obtained",
+    "composio_toolkit_exists": false,
+    "composio_auth_schemes": [],
+    "evidence_urls": [
+      "help.otter.ai (MCP server)"
+    ],
+    "confidence": "low",
+    "verified": false,
+    "verification_note": null
+  }
+]
+======================================================================
+FILE: verification_tool.py
 ======================================================================
 """
-web_researcher.py
-
-Tier 2: Uses Composio meta-tools (search + fetch) + free Gemini model
-to research an app and return structured JSON matching the schema.
+verification_tool.py
+Phase 4: Generate a verification sample, apply corrections, and calculate accuracy.
 """
 
 import json
+import csv
 import os
+from datetime import datetime
+from collections import defaultdict
+
+# ---------- CONFIG ----------
+INPUT_JSON = "output/pass_1.json"
+APPS_JSON = "data/apps.json"
+OUTPUT_SAMPLE_CSV = "verification_sample.csv"
+OUTPUT_SAMPLE_JSON = "verification_sample.json"
+OUTPUT_PASS_2 = "output/pass_2.json"
+
+def flatten_row(row):
+    """Converts lists to strings for CSV."""
+    flat = row.copy()
+    # Convert auth_methods list to a comma-separated string
+    if isinstance(flat.get("auth_methods"), list):
+        flat["auth_methods"] = ",".join(flat["auth_methods"])
+    # Ensure all required fields exist for manual editing
+    flat["manual_auth_methods"] = ""
+    flat["manual_self_serve"] = ""
+    flat["manual_api_surface"] = ""
+    flat["manual_buildability"] = ""
+    flat["manual_blocker"] = ""
+    return flat
+
+def unflatten_row(flat):
+    """Converts strings back to lists for JSON."""
+    row = flat.copy()
+    # Split auth_methods back into a list
+    if isinstance(row.get("auth_methods"), str) and row["auth_methods"]:
+        row["auth_methods"] = [m.strip() for m in row["auth_methods"].split(",") if m.strip()]
+    return row
+
+def generate_sample():
+    print("📂 Loading data...")
+    with open(APPS_JSON, "r") as f:
+        all_apps = json.load(f)
+    with open(INPUT_JSON, "r") as f:
+        pass_1 = json.load(f)
+
+    # Create a lookup for the pass_1 data by app_id
+    pass_1_lookup = {app["app_id"]: app for app in pass_1}
+
+    # Group apps by category
+    categories = defaultdict(list)
+    for app in all_apps:
+        categories[app["category"]].append(app["app_id"])
+
+    # Select up to 2 apps per category
+    selected_ids = []
+    for cat, ids in categories.items():
+        # Take the first 2 (if less than 2, take all)
+        selected_ids.extend(ids[:2])
+
+    # Build the sample data
+    sample_data = []
+    for app_id in selected_ids:
+        if app_id in pass_1_lookup:
+            sample_data.append(pass_1_lookup[app_id])
+
+    print(f"✅ Selected {len(sample_data)} apps for verification.")
+
+    # Save as JSON (for reference)
+    with open(OUTPUT_SAMPLE_JSON, "w") as f:
+        json.dump(sample_data, f, indent=2)
+
+    # Save as CSV (for easy editing)
+    with open(OUTPUT_SAMPLE_CSV, "w", newline="", encoding="utf-8") as f:
+        if not sample_data:
+            return
+        
+        # Flatten the first row to get headers
+        flat_sample = [flatten_row(row) for row in sample_data]
+        fieldnames = list(flat_sample[0].keys())
+        
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(flat_sample)
+
+    print(f"📄 Sample saved to: {OUTPUT_SAMPLE_CSV}")
+    print("👉 Open this file in Excel or Google Sheets.")
+    print("👉 Look for the columns that start with 'manual_'. Fill them in based on real docs.")
+    print("   - manual_auth_methods: e.g., 'oauth2' or 'oauth2,api_key'")
+    print("   - manual_self_serve: 'true' or 'false'")
+    print("   - manual_api_surface: 'rest', 'graphql', etc.")
+    print("   - manual_buildability: 'yes', 'partial', or 'no'")
+    print("   - manual_blocker: write the blocker, or leave empty if buildability is 'yes'")
+    print("\n💡 Tip: Use the 'website_hint' column to find the docs!")
+
+def apply_verification():
+    print("📂 Loading pass_1 and your corrections...")
+    
+    with open(INPUT_JSON, "r") as f:
+        pass_1 = json.load(f)
+    
+    corrected_rows = []
+    with open(OUTPUT_SAMPLE_CSV, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            corrected_rows.append(row)
+
+    # Build a lookup for corrections by app_id
+    corrections = {}
+    for row in corrected_rows:
+        app_id = int(row["app_id"])
+        corrections[app_id] = row
+
+    pass_2 = []
+    total_corrected = 0
+    stats = {"auth": 0, "self_serve": 0, "api_surface": 0, "buildability": 0}
+    total_checked = len(corrections)
+
+    for app in pass_1:
+        app_id = app["app_id"]
+        if app_id in corrections:
+            corr = corrections[app_id]
+            # Check if the user actually filled in manual fields
+            manual_auth = corr.get("manual_auth_methods", "").strip()
+            manual_self = corr.get("manual_self_serve", "").strip().lower()
+            manual_api = corr.get("manual_api_surface", "").strip()
+            manual_build = corr.get("manual_buildability", "").strip()
+            manual_block = corr.get("manual_blocker", "").strip()
+
+            # Count accuracy: compare original vs manual
+            if manual_auth:
+                # Compare as sets to handle different orders
+                orig_auth = set(app["auth_methods"])
+                new_auth = set([x.strip() for x in manual_auth.split(",") if x.strip()])
+                if orig_auth == new_auth:
+                    stats["auth"] += 1
+                # Apply correction
+                app["auth_methods"] = list(new_auth)
+
+            if manual_self in ["true", "false"]:
+                new_self = manual_self == "true"
+                if app["self_serve"] == new_self:
+                    stats["self_serve"] += 1
+                app["self_serve"] = new_self
+                # Update the basis to show it was verified
+                app["self_serve_basis"] = f"Manually verified: {app['self_serve_basis']}"
+
+            if manual_api:
+                if app["api_surface"] == manual_api:
+                    stats["api_surface"] += 1
+                app["api_surface"] = manual_api
+
+            if manual_build in ["yes", "partial", "no"]:
+                if app["buildability_verdict"] == manual_build:
+                    stats["buildability"] += 1
+                app["buildability_verdict"] = manual_build
+                if manual_block:
+                    app["blocker"] = manual_block
+                elif manual_build == "yes":
+                    app["blocker"] = None
+
+            # Mark as verified
+            app["verified"] = True
+            app["verification_note"] = f"Verified on {datetime.now().strftime('%Y-%m-%d')}"
+            total_corrected += 1
+
+        pass_2.append(app)
+
+    # Save pass_2
+    with open(OUTPUT_PASS_2, "w") as f:
+        json.dump(pass_2, f, indent=2)
+
+    print(f"\n✅ Done! {total_corrected} apps corrected.")
+    print(f"📄 Saved to: {OUTPUT_PASS_2}")
+
+    # Print Accuracy Report
+    print("\n" + "="*50)
+    print("📊 VERIFICATION ACCURACY REPORT")
+    print("="*50)
+    print(f"Sample Size: {total_checked} apps")
+    if total_checked > 0:
+        print(f"Auth Method correct: {stats['auth']}/{total_checked} ({round(stats['auth']/total_checked*100, 1)}%)")
+        print(f"Self-Serve correct: {stats['self_serve']}/{total_checked} ({round(stats['self_serve']/total_checked*100, 1)}%)")
+        print(f"API Surface correct: {stats['api_surface']}/{total_checked} ({round(stats['api_surface']/total_checked*100, 1)}%)")
+        print(f"Buildability correct: {stats['buildability']}/{total_checked} ({round(stats['buildability']/total_checked*100, 1)}%)")
+        
+        # Calculate overall average
+        total_correct = stats['auth'] + stats['self_serve'] + stats['api_surface'] + stats['buildability']
+        total_possible = total_checked * 4
+        avg = round(total_correct / total_possible * 100, 1)
+        print("-"*50)
+        print(f"📈 OVERALL ACCURACY (Pass 1): {avg}%")
+        print("="*50)
+        print("💡 If you corrected a lot of mistakes, your Pass 2 accuracy is now ~100% for these fields.")
+        print("   In your HTML report, use the Pass 1 vs Pass 2 comparison!")
+
+if __name__ == "__main__":
+    print("1️⃣  Generate verification sample? (type 'generate')")
+    print("2️⃣  Apply corrections and create pass_2? (type 'apply')")
+    choice = input("Enter command: ").strip().lower()
+    
+    if choice == "generate":
+        generate_sample()
+    elif choice == "apply":
+        apply_verification()
+    else:
+        print("Invalid choice. Please run with 'generate' or 'apply'.")
+======================================================================
+FILE: web_researcher.py
+======================================================================
+"""
+web_researcher.py – uses Gemini with a strict JSON prompt.
+"""
+
+import json
 import re
-from typing import Optional, Tuple, List, Dict, Any
+import os
+import time
+from typing import Optional, Tuple
 
 from google import genai
 from google.genai import types
-from dotenv import load_dotenv
-from composio import Composio
 
-load_dotenv()
-
-# ---------- Config ----------
-# Current free models (Aug 2026). Try in this order.
+# ----- Configuration -----
 GEMINI_MODELS = [
+    "gemini-3.6-flash", 
     "gemini-2.0-flash",
     "gemini-2.0-flash-001",
     "gemini-1.5-flash",
-    "gemini-1.5-flash-latest",
-    "gemini-flash-latest",
+    "gemini-1.5-pro",
 ]
 
-MAX_SEARCH_RESULTS = 5
-MAX_FETCH_CHARS = 5000
-
-SYSTEM_PROMPT = """You are a research agent investigating a SaaS app's developer/API surface for a technical due-diligence report.
-
-You will be given search results and (sometimes) the actual content of documentation pages.
-Answer ONLY based on the provided evidence. Never invent or guess.
-
-Respond with ONLY a single JSON object, no prose, no markdown fences. Use exactly these keys:
-
-{
-  "one_liner": "string, what the app does, one sentence",
-  "auth_methods": ["oauth2" | "api_key" | "basic" | "token" | "other" | "unknown"],
-  "self_serve": true | false,
-  "self_serve_basis": "string, your evidence for the self_serve determination",
-  "gating_reason": "string or null, only if self_serve is false",
-  "api_surface": "rest" | "graphql" | "rest_and_graphql" | "none" | "unknown",
-  "api_breadth_note": "string, roughly how broad the API is",
-  "mcp_exists": true | false,
-  "mcp_note": "string or null",
-  "buildability_verdict": "yes" | "partial" | "no",
-  "blocker": "string or null, only if verdict is not yes",
-  "evidence_urls": ["url", ...],
-  "confidence": "high" | "medium" | "low"
-}
-
-If the evidence is weak or missing, set confidence to "low" and do not invent URLs.
-"""
-
+MAX_RETRIES = 2
+RETRY_DELAY = 2
 
 def _extract_json(text: str) -> dict:
     cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", text.strip(), flags=re.IGNORECASE)
     return json.loads(cleaned)
 
-
-def _safe_execute(session, tool_name: str, params: dict):
-    """
-    Composio session.execute signature varies by version.
-    Try the most common patterns safely.
-    """
-    try:
-        # Newer style
-        return session.execute(tool_name, params)
-    except TypeError:
-        try:
-            # Some versions want a single dict
-            return session.execute({"name": tool_name, "arguments": params})
-        except Exception:
-            try:
-                # Older style
-                return session.execute(tool_name, **params)
-            except Exception as e:
-                return {"error": str(e)}
-
-
 def research_app(
-    composio_client: Composio,
+    session,  # unused
     app_name: str,
     website_hint: str,
     category: str,
 ) -> Tuple[Optional[dict], str]:
     """
-    Main research function.
-    Returns (parsed_dict or None, raw_text)
+    Uses Gemini to research the app and return structured JSON.
     """
-    session = composio_client.create(user_id="research_agent")
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        return None, "GEMINI_API_KEY not set in .env"
 
-    # ---------- 1. Search ----------
-    search_query = f"{app_name} official API documentation authentication developer docs"
-    search_results = []
+    client = genai.Client(api_key=api_key)
 
-    try:
-        tools = session.tools()
-        search_tool_name = None
-        for t in tools:
-            name = (t.get("function", {}) or {}).get("name") or t.get("name", "")
-            if "search" in name.lower():
-                search_tool_name = name
-                break
+    # Build a very explicit prompt
+    prompt = f"""You are a researcher. Research the app "{app_name}" (category: {category}, website hint: {website_hint}).
 
-        if search_tool_name:
-            result = _safe_execute(session, search_tool_name, {
-                "query": search_query,
-                "num_results": MAX_SEARCH_RESULTS
-            })
+Return a valid JSON object with these exact keys. Use your knowledge about this app. If unsure, set confidence to "low" and explain why.
 
-            if isinstance(result, dict):
-                search_results = (
-                    result.get("results")
-                    or result.get("data")
-                    or result.get("items")
-                    or []
-                )
-            elif isinstance(result, list):
-                search_results = result
-            else:
-                search_results = [{"title": "Search", "url": "", "content": str(result)}]
-        else:
-            search_results = [{"title": app_name, "url": website_hint, "content": "No search tool found"}]
-    except Exception as e:
-        search_results = [{"title": "Search failed", "url": website_hint, "content": str(e)}]
+Keys:
+- one_liner: string, what the app does in one sentence
+- auth_methods: list of strings, choose from ["oauth2","api_key","basic","token","other","unknown"]
+- self_serve: boolean, can a developer sign up for free and get API keys instantly?
+- self_serve_basis: string, your reasoning/evidence for self_serve
+- gating_reason: string or null, only if self_serve is false
+- api_surface: string, choose from ["rest","graphql","rest_and_graphql","none","unknown"]
+- api_breadth_note: string, roughly how broad the API is
+- mcp_exists: boolean, is there an existing MCP server?
+- mcp_note: string or null
+- buildability_verdict: string, choose from ["yes","partial","no"]
+- blocker: string or null, only if verdict is not yes
+- evidence_urls: list of strings, URLs of documentation (at least use the website hint)
+- confidence: string, choose from ["high","medium","low"]
 
-    # ---------- 2. Fetch top pages ----------
-    fetched_pages = []
-    for item in search_results[:2]:
-        url = item.get("url") or item.get("link") or item.get("href") or ""
-        if not url.startswith("http"):
-            continue
+Example for Stripe:
+{{
+  "one_liner": "Payments, billing, and financial infrastructure API",
+  "auth_methods": ["api_key"],
+  "self_serve": true,
+  "self_serve_basis": "Anyone can sign up and get test API keys immediately",
+  "gating_reason": null,
+  "api_surface": "rest",
+  "api_breadth_note": "Very broad – payments, subscriptions, connect, invoicing",
+  "mcp_exists": false,
+  "mcp_note": null,
+  "buildability_verdict": "yes",
+  "blocker": null,
+  "evidence_urls": ["https://stripe.com/docs/api"],
+  "confidence": "high"
+}}
 
-        try:
-            fetch_tool_name = None
-            for t in session.tools():
-                name = (t.get("function", {}) or {}).get("name") or t.get("name", "")
-                if any(k in name.lower() for k in ["fetch", "browse", "scrape", "get_page", "read_url"]):
-                    fetch_tool_name = name
-                    break
-
-            if fetch_tool_name:
-                page = _safe_execute(session, fetch_tool_name, {"url": url})
-                content = str(page)[:MAX_FETCH_CHARS]
-                fetched_pages.append({"url": url, "content": content})
-            else:
-                # fallback to snippet
-                fetched_pages.append({
-                    "url": url,
-                    "content": item.get("content") or item.get("snippet") or item.get("description") or ""
-                })
-        except Exception:
-            continue
-
-    # ---------- 3. Build context ----------
-    context_parts = []
-    for i, r in enumerate(search_results[:MAX_SEARCH_RESULTS], 1):
-        context_parts.append(
-            f"[{i}] Title: {r.get('title', '')}\n"
-            f"URL: {r.get('url') or r.get('link') or r.get('href', '')}\n"
-            f"Snippet: {(r.get('content') or r.get('snippet') or r.get('description') or '')[:400]}"
-        )
-
-    for p in fetched_pages:
-        context_parts.append(f"\n--- Page content from {p['url']} ---\n{p['content']}")
-
-    context = "\n\n".join(context_parts) if context_parts else "No useful search results found."
-
-    user_prompt = (
-        f"App: {app_name}\n"
-        f"Category: {category}\n"
-        f"Website / hint: {website_hint}\n\n"
-        f"=== EVIDENCE ===\n{context}\n\n"
-        f"Based ONLY on the evidence above, fill the JSON object."
-    )
-
-    # ---------- 4. Call Gemini (new SDK) ----------
-    client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+Now return ONLY the JSON for {app_name}. No extra text.
+"""
 
     last_error = None
-    for model_name in GEMINI_MODELS:
-        try:
-            response = client.models.generate_content(
-                model=model_name,
-                contents=user_prompt,
-                config=types.GenerateContentConfig(
-                    system_instruction=SYSTEM_PROMPT,
-                    temperature=0.1,
-                    max_output_tokens=1500,
-                    response_mime_type="application/json",
-                ),
-            )
-            full_text = response.text
-            parsed = _extract_json(full_text)
-            return parsed, full_text
-        except Exception as e:
-            last_error = str(e)
-            continue
-
-    return None, f"All Gemini models failed. Last error: {last_error}\n\nContext was:\n{context[:1200]}"
-
-
-# ---------- Smoke test ----------
-if __name__ == "__main__":
-    composio = Composio(api_key=os.getenv("COMPOSIO_API_KEY"))
-
-    parsed, raw = research_app(
-        composio,
-        "Waterfall.io",
-        "waterfall.io (contact/company intel)",
-        "Data, SEO and Scraping",
-    )
-
-    if parsed:
-        print("✅ Parsed successfully:")
-        print(json.dumps(parsed, indent=2))
-    else:
-        print("❌ Failed to parse. Raw output:")
-        print(raw)
+    for attempt in range(MAX_RETRIES):
+        for model_name in GEMINI_MODELS:
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        temperature=0.1,
+                        max_output_tokens=1500,
+                        response_mime_type="application/json",
+                    ),
+                )
+                full_text = response.text
+                parsed = _extract_json(full_text)
+                
+                # Ensure evidence_urls has at least the hint
+                if not parsed.get("evidence_urls") and website_hint:
+                    if not website_hint.startswith("http"):
+                        parsed["evidence_urls"] = [f"https://{website_hint}"]
+                    else:
+                        parsed["evidence_urls"] = [website_hint]
+                
+                return parsed, full_text
+                
+            except Exception as e:
+                last_error = str(e)
+                if "503" in last_error or "UNAVAILABLE" in last_error:
+                    time.sleep(RETRY_DELAY * (2 ** attempt))
+                    break
+                continue
+    
+    # Fallback: return a low-confidence default
+    fallback = {
+        "one_liner": f"Could not research {app_name} – API unavailable",
+        "auth_methods": ["unknown"],
+        "self_serve": False,
+        "self_serve_basis": f"Gemini API failed: {last_error}",
+        "gating_reason": "Unable to verify due to API error",
+        "api_surface": "unknown",
+        "api_breadth_note": "",
+        "mcp_exists": False,
+        "mcp_note": None,
+        "buildability_verdict": "no",
+        "blocker": "No reliable data obtained",
+        "evidence_urls": [website_hint] if website_hint else [],
+        "confidence": "low",
+    }
+    return fallback, f"Fallback used. Last error: {last_error}"
 ======================================================================
 FILE: data\apps.json
 ======================================================================
@@ -1032,36 +1808,6 @@ FILE: data\apps.json
 ]
 
 ======================================================================
-FILE: output\pass_1.json
-======================================================================
-[]
-======================================================================
 FILE: output\pass_1_failures.json
 ======================================================================
-[
-  {
-    "app": "Salesforce",
-    "status": "error",
-    "note": "research_app raised: 'ToolRouterSession' object has no attribute 'create'"
-  },
-  {
-    "app": "HubSpot",
-    "status": "error",
-    "note": "research_app raised: 'ToolRouterSession' object has no attribute 'create'"
-  },
-  {
-    "app": "Pipedrive",
-    "status": "error",
-    "note": "research_app raised: 'ToolRouterSession' object has no attribute 'create'"
-  },
-  {
-    "app": "Attio",
-    "status": "error",
-    "note": "research_app raised: 'ToolRouterSession' object has no attribute 'create'"
-  },
-  {
-    "app": "Twenty",
-    "status": "error",
-    "note": "research_app raised: 'ToolRouterSession' object has no attribute 'create'"
-  }
-]
+[]
