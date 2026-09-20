@@ -73,8 +73,8 @@ The agent works in **two tiers**:
 
 ```bash
 # 1. Clone the repo
-git clone <your-repo-url>
-cd <repo-name>
+git clone [<your-repo-url>](https://github.com/Kshitij9137/Composio_assignment)
+cd Composio_assignment
 
 # 2. Create virtual environment
 python3 -m venv .venv
