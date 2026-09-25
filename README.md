@@ -72,7 +72,7 @@ The agent works in **two tiers**:
 ### Setup
 
 ```bash
-# 1. Clone the repo
+# 1. Clone the repository 
 git clone (https://github.com/Kshitij9137/Composio_assignment)
 cd Composio_assignment
 
